@@ -5,3 +5,5 @@ output/
 *.user
 cmake-*
 .idea
+__pycache__/
+*.pyc

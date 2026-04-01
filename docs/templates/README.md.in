@@ -1,8 +1,8 @@
 <div align="center">
 
-# FnQuake3
+# ${project_name}
 
-Fappin' Quake III, shortened to FnQuake3 or FnQ3.
+${display_name}, shortened to ${project_name} or ${project_name_short}.
 
 <p>
   <a href="BUILD.md"><img alt="Build Guide" src="https://img.shields.io/badge/Build-Guide-1f2937?style=for-the-badge"></a>
@@ -12,7 +12,7 @@ Fappin' Quake III, shortened to FnQuake3 or FnQ3.
 
 </div>
 
-FnQuake3 is a modernized Quake III Arena engine project focused on retail compatibility, demo compatibility, speed, and broad platform coverage.
+${project_name} is a modernized Quake III Arena engine project focused on retail compatibility, demo compatibility, speed, and broad platform coverage.
 
 ## What Matters
 
@@ -30,7 +30,7 @@ FnQuake3 is a modernized Quake III Arena engine project focused on retail compat
 
 ## Release Channels
 
-- Tagged releases use semantic version tags such as `v0.1.0`.
+- Tagged releases use semantic version tags such as `${release_tag_example}`.
 - Nightly packages track current mainline work and include the build date plus commit in the archive name.
 
 ## Documentation
@@ -46,4 +46,4 @@ FnQuake3 is a modernized Quake III Arena engine project focused on retail compat
 3. Enhanced modern platform support.
 4. Cross-platform support, with other platforms considered.
 
-Current tracked base version: `0.1.0`
+Current tracked base version: `${version}`

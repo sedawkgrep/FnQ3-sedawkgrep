@@ -1,0 +1,22 @@
+#ifndef FNQ3_VERSION_H_
+#define FNQ3_VERSION_H_
+
+#define FNQ3_PROJECT_NAME "FnQuake3"
+#define FNQ3_PROJECT_NAME_SHORT "FnQ3"
+#define FNQ3_DISPLAY_NAME "Fappin' Quake III"
+#define FNQ3_COMPATIBILITY_TARGET "Retail Quake III Arena 1.32"
+
+#define FNQ3_VERSION_MAJOR 0
+#define FNQ3_VERSION_MINOR 1
+#define FNQ3_VERSION_PATCH 0
+#define FNQ3_VERSION_TWEAK 0
+#define FNQ3_VERSION_STRING "0.1.0"
+
+#define FNQ3_TAG_PREFIX "v"
+#define FNQ3_ARTIFACT_PREFIX "fnquake3"
+#define FNQ3_NIGHTLY_TAG "nightly"
+
+#define FNQ3_WINDOWS_FILE_VERSION 0,1,0,0
+#define FNQ3_WINDOWS_PRODUCT_VERSION 0,1,0,0
+
+#endif

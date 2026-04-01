@@ -52,10 +52,11 @@ USE_RENDERER_DLOPEN = 1
 # valid options: opengl, vulkan, opengl2
 RENDERER_DEFAULT = opengl
 
-CNAME            = quake3e
-DNAME            = quake3e.ded
+CNAME            = fnquake3
+DNAME            = fnquake3.ded
 
 RENDERER_PREFIX  = $(CNAME)
+VERSION_HEADER   = version/fnq3_version.h
 
 
 ifeq ($(V),1)
@@ -279,12 +280,8 @@ ifeq ($(USE_SYSTEM_VORBIS),1)
 endif
 
 # extract version info
-ifneq ($(COMPILE_PLATFORM),darwin)
-VERSION=$(shell grep ".\+define[ \t]\+Q3_VERSION[ \t]\+\+" $(CMDIR)/q_shared.h | \
-  sed -e 's/.*".* \([^ ]*\)"/\1/')
-else
-VERSION=1.32e
-endif
+VERSION=$(shell grep "^[[:space:]]*#define[[:space:]]\+FNQ3_VERSION_STRING[[:space:]]\+\"" $(VERSION_HEADER) | \
+  sed -e 's/.*"\([^"]*\)".*/\1/')
 
 # common qvm definition
 ifeq ($(ARCH),x86_64)

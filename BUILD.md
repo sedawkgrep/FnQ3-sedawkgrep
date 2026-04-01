@@ -2,13 +2,13 @@
 
 ### windows/msvc
 
-Install Visual Studio Community Edition 2017 or later and compile `quake3e` project from solution
+Install Visual Studio Community Edition 2017 or later and compile the `fnquake3` project from solution
 
-`code/win32/msvc2017/quake3e.sln`
+`code/win32/msvc2017/fnquake3.sln`
 
 Copy resulting exe from `code/win32/msvc2017/output` directory
 
-To compile with Vulkan backend - clean solution, right click on `quake3e` project, find `Project Dependencies` and select `renderervk` instead of `renderer`
+To compile with Vulkan backend, clean the solution, right click the `fnquake3` project, open `Project Dependencies`, and select `renderervk` instead of `renderer`
 
 ---
 
@@ -57,23 +57,7 @@ Current SDL backend dependency baseline: `SDL3 >= 3.2.0`
 
 ### Arch Linux
 
-The package `quake3e-git` can either be installed through your favourite AUR helper, or manually using these commands:
-
-Download the snapshot from AUR:
-
-`curl -O https://aur.archlinux.org/cgit/aur.git/snapshot/quake3e-git.tar.gz`
-
-Extract the snapshot:
-
-`tar xfz quake3e-git.tar.gz`
-
-Enter the extracted directory:
-
-`cd quake3e-git`
-
-Build and install `quake3e-git`:
-
-`makepkg -risc`
+Use the generic Linux instructions above. No official Arch package name is documented in this repository under the FnQuake3 branding yet.
 
 ---
 

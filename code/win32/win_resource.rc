@@ -8,6 +8,7 @@
 // Generated from the TEXTINCLUDE 2 resource.
 //
 #include <winresrc.h>
+#include "../../version/fnq3_version.h"
 
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
@@ -54,9 +55,9 @@ END
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 #ifndef __MINGW32__
-IDI_ICON1               ICON    DISCARDABLE     "qe3.ico"
+IDI_ICON1               ICON    DISCARDABLE     "fnq3.ico"
 #else
-IDI_ICON1               ICON    DISCARDABLE     "code/win32/qe3.ico"
+IDI_ICON1               ICON    DISCARDABLE     "code/win32/fnq3.ico"
 #endif
 
 
@@ -67,7 +68,41 @@ IDI_ICON1               ICON    DISCARDABLE     "code/win32/qe3.ico"
 
 STRINGTABLE DISCARDABLE 
 BEGIN
-    IDS_STRING1             "Quake3"
+    IDS_STRING1             FNQ3_PROJECT_NAME
+END
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION FNQ3_WINDOWS_FILE_VERSION
+ PRODUCTVERSION FNQ3_WINDOWS_PRODUCT_VERSION
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", FNQ3_PROJECT_NAME " engine" "\0"
+            VALUE "FileVersion", FNQ3_VERSION_STRING "\0"
+            VALUE "ProductName", FNQ3_PROJECT_NAME "\0"
+            VALUE "ProductVersion", FNQ3_VERSION_STRING "\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
 END
 
 #endif    // English (U.S.) resources

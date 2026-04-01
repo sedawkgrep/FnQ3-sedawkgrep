@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8,00"
-	Name="quake3e"
-	ProjectGUID="{81CB51C4-B434-4E12-B69B-BAEE102F2852}"
-	RootNamespace="quake3e"
+	Name="fnquake3-ded"
+	ProjectGUID="{81CB51C4-B434-4E12-B69B-BAEE102F2853}"
+	RootNamespace="quake3"
 	>
 	<Platforms>
 		<Platform
@@ -43,8 +43,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;DEDICATED;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
 				AssemblerListingLocation="$(IntDir)\"
@@ -67,13 +66,13 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib ..\..\libcurl\windows\vs2005\lib32\libcurl_a_debug.lib"
-				OutputFile="$(OutDir)\quake3e-debug.exe"
+				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib"
+				OutputFile="$(OutDir)\fnquake3.ded-debug.exe"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
-				ProgramDatabaseFile="$(IntDir)\quake3e-debug.pdb"
+				ProgramDatabaseFile="$(IntDir)\fnquake3.ded-debug.pdb"
 				GenerateMapFile="true"
-				MapFileName="$(IntDir)\quake3e-debug.map"
+				MapFileName="$(IntDir)\fnquake3.ded-debug.map"
 				SubSystem="2"
 				StackReserveSize="4194304"
 				TargetMachine="1"
@@ -130,8 +129,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;DEDICATED;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
 				AssemblerListingLocation="$(IntDir)\"
@@ -154,13 +152,13 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib crypt32.lib ..\..\libcurl\windows\vs2005\lib64\libcurl_a_debug.lib"
-				OutputFile="$(OutDir)\quake3e-debug.x64.exe"
+				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib"
+				OutputFile="$(OutDir)\quake3de.ded-debug.x64.exe"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
-				ProgramDatabaseFile="$(IntDir)\quake3e-debug.x64.pdb"
+				ProgramDatabaseFile="$(IntDir)\fnquake3.ded-debug.x64.pdb"
 				GenerateMapFile="true"
-				MapFileName="$(IntDir)\quake3e-debug.x64.map"
+				MapFileName="$(IntDir)\fnquake3.ded-debug.x64.map"
 				SubSystem="2"
 				StackReserveSize="4194304"
 				TargetMachine="17"
@@ -217,8 +215,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_WIN32;NDEBUG;_WINDOWS;USE_SKIPIDLOGO;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;_WIN32;DEDICATED;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DISABLE_IPV6"
 				AssemblerListingLocation="$(IntDir)\"
 			/>
 			<Tool
@@ -233,10 +230,10 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/DYNAMICBASE"
-				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib ..\..\libcurl\windows\vs2005\lib32\libcurl_a.lib"
-				OutputFile="$(OutDir)\quake3e.exe"
+				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib"
+				OutputFile="$(OutDir)\fnquake3.ded.exe"
 				GenerateMapFile="true"
-				MapFileName="$(IntDir)\quake3e.map"
+				MapFileName="$(IntDir)\fnquake3.ded.map"
 				SubSystem="2"
 				StackReserveSize="4194304"
 				OptimizeReferences="2"
@@ -297,8 +294,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="..\..\libogg\include;..\..\libvorbis\include;..\..\libcurl\windows\include;$(NOINHERIT)"
-				PreprocessorDefinitions="WIN32;_WIN32;NDEBUG;_WINDOWS;USE_SKIPIDLOGO;USE_CURL;CURL_STATICLIB;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_WIN32_ASM;_CRT_SECURE_NO_DEPRECATE;$(NOINHERIT)"
+				PreprocessorDefinitions="WIN32;_WIN32;DEDICATED;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE"
 				AssemblerListingLocation="$(IntDir)\"
 			/>
 			<Tool
@@ -313,10 +309,10 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/DYNAMICBASE"
-				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib crypt32.lib ..\..\libcurl\windows\vs2005\lib64\libcurl_a.lib"
-				OutputFile="$(OutDir)\quake3e.x64.exe"
+				AdditionalDependencies="comctl32.lib winmm.lib wsock32.lib ws2_32.lib"
+				OutputFile="$(OutDir)\fnquake3.ded.x64.exe"
 				GenerateMapFile="true"
-				MapFileName="$(IntDir)\quake3e.x64.map"
+				MapFileName="$(IntDir)\fnquake3.ded.x64.map"
 				SubSystem="2"
 				StackReserveSize="4194304"
 				OptimizeReferences="2"
@@ -357,60 +353,8 @@
 	<Files>
 		<Filter
 			Name="Source Files"
-			Filter="cpp;c;bat"
+			Filter="c;cpp;def;bat;asm"
 			>
-			<File
-				RelativePath="..\..\client\cl_avi.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_cgame.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_cin.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_console.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_curl.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_input.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_jpeg.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_keys.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_main.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_net_chan.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_parse.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_scrn.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_ui.c"
-				>
-			</File>
 			<File
 				RelativePath="..\..\qcommon\cm_load.c"
 				>
@@ -524,75 +468,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\qcommon\puff.c"
-				>
-			</File>
-			<File
 				RelativePath="..\..\.\qcommon\q_math.c"
 				>
 			</File>
 			<File
 				RelativePath="..\..\.\qcommon\q_shared.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_adpcm.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_codec.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_codec_ogg.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_codec_wav.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_dma.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_main.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_mem.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_mix.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\asm\snd_mix_x64.asm"
-				>
-				<FileConfiguration
-					Name="Debug|x64"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						Description="Assembling..."
-						CommandLine="ml64 /c /Zi /Fo&quot;$(IntDir)\$(InputFileName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-						Outputs="&quot;$(IntDir)\$(InputFileName).obj&quot;"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|x64"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-						Description="Assembling..."
-						CommandLine="ml64 /c /Zi /Fo&quot;$(IntDir)\$(InputFileName).obj&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;"
-						Outputs="&quot;$(IntDir)\$(InputFileName).obj&quot;"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_wavelet.c"
 				>
 			</File>
 			<File
@@ -652,47 +532,15 @@
 				>
 			</File>
 			<File
-				RelativePath="..\win_gamma.c"
+				RelativePath="..\..\win32\win_main.c"
 				>
 			</File>
 			<File
-				RelativePath="..\win_glimp.c"
+				RelativePath="..\..\win32\win_shared.c"
 				>
 			</File>
 			<File
-				RelativePath="..\win_input.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_main.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_minimize.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_qgl.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_qvk.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_shared.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_snd.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_syscon.c"
-				>
-			</File>
-			<File
-				RelativePath="..\win_wndproc.c"
+				RelativePath="..\..\win32\win_syscon.c"
 				>
 			</File>
 		</Filter>
@@ -706,10 +554,6 @@
 			</File>
 			<File
 				RelativePath="..\..\cgame\cg_public.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\cl_curl.h"
 				>
 			</File>
 			<File
@@ -737,10 +581,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\glw_win.h"
-				>
-			</File>
-			<File
 				RelativePath="..\..\client\keycodes.h"
 				>
 			</File>
@@ -749,19 +589,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\qcommon\puff.h"
-				>
-			</File>
-			<File
 				RelativePath="..\..\qcommon\q_platform.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\qcommon\q_shared.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\qal.h"
+				RelativePath="..\..\.\qcommon\q_shared.h"
 				>
 			</File>
 			<File
@@ -773,11 +605,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\renderer\qgl.h"
-				>
-			</File>
-			<File
-				RelativePath="..\resource.h"
+				RelativePath="..\..\win32\resource.h"
 				>
 			</File>
 			<File
@@ -785,31 +613,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\client\snd_local.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\client\snd_public.h"
-				>
-			</File>
-			<File
 				RelativePath="..\..\.\qcommon\surfaceflags.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\server\tlds.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\renderer\tr_local.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\renderercommon\tr_public.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\renderercommon\tr_types.h"
 				>
 			</File>
 			<File
@@ -825,7 +629,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\win_local.h"
+				RelativePath="..\..\win32\win_local.h"
 				>
 			</File>
 		</Filter>
@@ -834,7 +638,7 @@
 			Filter="ico;cur;bmp;dlg;rc2;rct;bin;cnt;rtf;gif;jpg;jpeg;jpe"
 			>
 			<File
-				RelativePath="..\qe3.ico"
+				RelativePath="..\..\win32\fnq3.ico"
 				>
 			</File>
 			<File

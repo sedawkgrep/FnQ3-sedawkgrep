@@ -1,9 +1,12 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
 
-PROJECT(quake3e)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/version/fnq3_version.h" FNQ3_VERSION_STRING_LINE REGEX "^#define FNQ3_VERSION_STRING \"[^\"]+\"$")
+string(REGEX REPLACE "^#define FNQ3_VERSION_STRING \"([^\"]+)\"$" "\\1" FNQ3_VERSION_STRING "${FNQ3_VERSION_STRING_LINE}")
 
-SET(CNAME "quake3e")
-SET(DNAME "quake3e.ded")
+PROJECT(FnQuake3 VERSION ${FNQ3_VERSION_STRING})
+
+SET(CNAME "fnquake3")
+SET(DNAME "fnquake3.ded")
 
 SET(RENDERER_PREFIX ${CNAME})
 SET(RENDERER_DEFAULT opengl) # valid options: opengl, vulkan, opengl2
@@ -147,10 +150,10 @@ IF(UNIX)
 
 	IF(APPLE)
 		SET(EXE_TYPE MACOSX_BUNDLE)
-		list(APPEND Q3_SRCS code/unix/quake3_flat.icns)
-		set_source_files_properties(code/unix/quake3_flat.icns PROPERTIES
+		list(APPEND Q3_SRCS code/unix/fnquake3.icns)
+		set_source_files_properties(code/unix/fnquake3.icns PROPERTIES
 			MACOSX_PACKAGE_LOCATION Resources)
-		SET(MACOSX_BUNDLE_ICON_FILE quake3_flat.icns)
+		SET(MACOSX_BUNDLE_ICON_FILE fnquake3.icns)
 	ENDIF()
 ELSEIF(WIN32)
 	SET(EXE_TYPE WIN32)
