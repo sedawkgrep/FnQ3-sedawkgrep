@@ -42,6 +42,51 @@ refimport_t	ri;
 // entities that will have procedurally generated surfaces will just
 // point at this for their sorting surface
 static surfaceType_t	entitySurface = SF_ENTITY;
+
+#define R_BASE_VIEWPORT_ASPECT ( 4.0f / 3.0f )
+
+void R_ApplyViewportFovCorrection( int viewportWidth, int viewportHeight, qboolean usePhysicalAspect, float *fovX, float *fovY )
+{
+	float viewportAspect;
+	float renderAspect;
+	float tanHalfBaseFovY;
+
+	if ( fovX == NULL || fovY == NULL ) {
+		return;
+	}
+
+	if ( viewportWidth <= 0 || viewportHeight <= 0 ) {
+		return;
+	}
+
+	if ( r_fovCorrection == NULL || r_fovCorrection->integer == 0 ) {
+		return;
+	}
+
+	if ( *fovX <= 0.0f || *fovX >= 179.0f ) {
+		return;
+	}
+
+	viewportAspect = (float)viewportWidth / (float)viewportHeight;
+
+	if ( usePhysicalAspect && glConfig.vidWidth > 0 && glConfig.vidHeight > 0 && glConfig.windowAspect > 0.0f ) {
+		renderAspect = (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+		if ( renderAspect > 0.0f ) {
+			viewportAspect *= glConfig.windowAspect / renderAspect;
+		}
+	}
+
+	if ( fabsf( viewportAspect - R_BASE_VIEWPORT_ASPECT ) < 0.001f ) {
+		return;
+	}
+
+	// Quake 3 authored gameplay FOV against a 4:3 view. Preserve that vertical
+	// framing, then expand or contract the horizontal FOV to fit the viewport.
+	tanHalfBaseFovY = tanf( *fovX * M_PI / 360.0f ) / R_BASE_VIEWPORT_ASPECT;
+
+	*fovX = atanf( tanHalfBaseFovY * viewportAspect ) * 360.0f / M_PI;
+	*fovY = atanf( tanHalfBaseFovY ) * 360.0f / M_PI;
+}
 #if 0
 /*
 ================
@@ -72,7 +117,7 @@ static qboolean R_CompareVert(srfVert_t * v1, srfVert_t * v2, qboolean checkST)
 =============
 R_CalcTexDirs
 
-Lengyel, Eric. “Computing Tangent Space Basis Vectors for an Arbitrary Mesh”. Terathon Software 3D Graphics Library, 2001. http://www.terathon.com/code/tangent.html
+Lengyel, Eric. "Computing Tangent Space Basis Vectors for an Arbitrary Mesh". Terathon Software 3D Graphics Library, 2001. http://www.terathon.com/code/tangent.html
 =============
 */
 void R_CalcTexDirs(vec3_t sdir, vec3_t tdir, const vec3_t v1, const vec3_t v2,
@@ -104,7 +149,7 @@ void R_CalcTexDirs(vec3_t sdir, vec3_t tdir, const vec3_t v1, const vec3_t v2,
 =============
 R_CalcTangentSpace
 
-Lengyel, Eric. “Computing Tangent Space Basis Vectors for an Arbitrary Mesh”. Terathon Software 3D Graphics Library, 2001. http://www.terathon.com/code/tangent.html
+Lengyel, Eric. "Computing Tangent Space Basis Vectors for an Arbitrary Mesh". Terathon Software 3D Graphics Library, 2001. http://www.terathon.com/code/tangent.html
 =============
 */
 vec_t R_CalcTangentSpace(vec3_t tangent, vec3_t bitangent, const vec3_t normal, const vec3_t sdir, const vec3_t tdir)
@@ -2206,6 +2251,8 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 	vec4_t lightDir, lightCol;
 	vec3_t lightViewAxis[3];
 	vec3_t lightOrigin;
+	float fovX;
+	float fovY;
 	float splitZNear, splitZFar, splitBias;
 	float viewZNear, viewZFar;
 	vec3_t lightviewBounds[2];
@@ -2247,6 +2294,9 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 	viewZNear = r_shadowCascadeZNear->value;
 	viewZFar = r_shadowCascadeZFar->value;
 	splitBias = r_shadowCascadeZBias->value;
+	fovX = fd->fov_x;
+	fovY = fd->fov_y;
+	R_ApplyViewportFovCorrection( fd->width, fd->height, qtrue, &fovX, &fovY );
 
 	switch(level)
 	{
@@ -2339,8 +2389,8 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 		if (level != 3)
 		{
 			// add view near plane
-			lx = splitZNear * tan(fd->fov_x * M_PI / 360.0f);
-			ly = splitZNear * tan(fd->fov_y * M_PI / 360.0f);
+			lx = splitZNear * tan(fovX * M_PI / 360.0f);
+			ly = splitZNear * tan(fovY * M_PI / 360.0f);
 			VectorMA(fd->vieworg, splitZNear, fd->viewaxis[0], base);
 
 			VectorMA(base,   lx, fd->viewaxis[1], point);
@@ -2365,8 +2415,8 @@ void R_RenderSunShadowMaps(const refdef_t *fd, int level)
 			
 
 			// add view far plane
-			lx = splitZFar * tan(fd->fov_x * M_PI / 360.0f);
-			ly = splitZFar * tan(fd->fov_y * M_PI / 360.0f);
+			lx = splitZFar * tan(fovX * M_PI / 360.0f);
+			ly = splitZFar * tan(fovY * M_PI / 360.0f);
 			VectorMA(fd->vieworg, splitZFar, fd->viewaxis[0], base);
 
 			VectorMA(base,   lx, fd->viewaxis[1], point);
