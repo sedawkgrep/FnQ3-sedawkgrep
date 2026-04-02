@@ -58,6 +58,7 @@ extern cvar_t *in_nograb;
 void IN_Init( void );
 void IN_Shutdown( void );
 void GLW_UpdateWindowState( void );
+void GLW_RestoreGamma( void );
 
 // signals.c
 void InitSig( void );

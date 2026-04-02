@@ -280,7 +280,7 @@ ifeq ($(USE_SYSTEM_VORBIS),1)
 endif
 
 # extract version info
-VERSION=$(shell awk -F'"' '/^[[:space:]]*#define[[:space:]][[:space:]]*FNQ3_VERSION_STRING[[:space:]][[:space:]]*"/ { print $$2; exit }' $(VERSION_HEADER))
+VERSION=$(shell grep -m1 FNQ3_VERSION_STRING $(VERSION_HEADER) | cut -d\" -f2)
 
 # common qvm definition
 ifeq ($(ARCH),x86_64)
@@ -666,6 +666,17 @@ ifneq ($(BUILD_CLIENT),0)
   endif
 endif
 
+RECURSIVE_MAKE = $(MAKE)
+ifdef MINGW
+  MAKE_PATH := $(subst ",,$(subst \,/,$(MAKE)))
+  ifneq ($(findstring :,$(MAKE_PATH)),)
+    # Old MSYS make launched from cmd.exe may record $(MAKE) as a Windows path
+    # that /bin/sh can't recurse into reliably. Fall back to the PATH-resolved
+    # executable name for recursive invocations.
+    RECURSIVE_MAKE = $(notdir $(MAKE_PATH))
+  endif
+endif
+
 ifeq ($(USE_CCACHE),1)
   CC := ccache $(CC)
 endif
@@ -734,10 +745,10 @@ default: release
 all: debug release
 
 debug:
-	@$(MAKE) targets B=$(BD) CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS)" LDFLAGS="$(LDFLAGS) $(DEBUG_LDFLAGS)" V=$(V)
+	@B="$(BD)" CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS)" LDFLAGS="$(LDFLAGS) $(DEBUG_LDFLAGS)" $(RECURSIVE_MAKE) targets V=$(V)
 
 release:
-	@$(MAKE) targets B=$(BR) CFLAGS="$(CFLAGS) $(RELEASE_CFLAGS)" V=$(V)
+	@B="$(BR)" CFLAGS="$(CFLAGS) $(RELEASE_CFLAGS)" $(RECURSIVE_MAKE) targets V=$(V)
 
 define ADD_COPY_TARGET
 TARGETS += $2
@@ -790,7 +801,7 @@ endif
 	done
 	@echo ""
 ifneq ($(TARGETS),)
-	@$(MAKE) $(TARGETS) V=$(V)
+	@$(RECURSIVE_MAKE) $(TARGETS) V=$(V)
 endif
 
 makedirs:

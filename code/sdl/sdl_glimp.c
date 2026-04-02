@@ -28,11 +28,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifdef USE_VULKAN_API
 #	include <SDL3/SDL_vulkan.h>
 #endif
+
+#include "../client/client.h"
 #ifdef _WIN32
 #	include <windows.h>
 #endif
-
-#include "../client/client.h"
 #ifndef _WIN32
 #include "../unix/unix_syscon.h"
 #endif
@@ -119,6 +119,8 @@ void GLimp_Shutdown( qboolean unloadDLL )
 			GLW_ShowCursor( qtrue );
 		}
 	}
+
+	GLW_RestoreGamma();
 
 	if ( SDL_window ) {
 		SDL_DestroyWindow( SDL_window );
@@ -421,6 +423,7 @@ static int GLW_SetMode( int mode, const char *modeFS, qboolean fullscreen, qbool
 	{
 		SDL_GetWindowPosition( SDL_window, &x, &y );
 		Com_DPrintf( "Existing window at %dx%d before being destroyed\n", x, y );
+		GLW_RestoreGamma();
 		SDL_DestroyWindow( SDL_window );
 		SDL_window = NULL;
 	}

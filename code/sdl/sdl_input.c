@@ -1169,11 +1169,17 @@ static void IN_HandleWindowEvent( Uint32 type, const SDL_WindowEvent *window, ke
 
 		case SDL_EVENT_WINDOW_RESIZED:
 		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-		case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
 		case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+			GLW_UpdateWindowState();
+			break;
+
+		case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
 		case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
 		case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
 			GLW_UpdateWindowState();
+			if ( gw_active && re.SetColorMappings ) {
+				re.SetColorMappings();
+			}
 			break;
 
 		case SDL_EVENT_WINDOW_HIDDEN:
