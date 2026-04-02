@@ -3916,12 +3916,11 @@ void CL_Init( void ) {
 		" 0 - stretch UI and fullscreen cinematics to the framebuffer\n"
 		" 1 - keep UI and fullscreen cinematics in centered 4:3 space" );
 	cl_hudAspect = Cvar_Get( "cl_hudAspect", "0", CVAR_ARCHIVE );
-	Cvar_CheckRange( cl_hudAspect, "0", "2", CV_INTEGER );
+	Cvar_CheckRange( cl_hudAspect, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( cl_hudAspect,
 		"HUD aspect correction mode:\n"
 		" 0 - stretch HUD to the framebuffer\n"
-		" 1 - keep HUD in centered 4:3 uniform space\n"
-		" 2 - use centered 4:3 uniform space plus fnquake3 HUD rules from fnq3-hud.json" );
+		" 1 - keep HUD in centered 4:3 uniform space and apply fnq3-hud.json rules when present" );
 	cl_hudDump = Cvar_Get( "cl_hudDump", "0", CVAR_ARCHIVE );
 	Cvar_CheckRange( cl_hudDump, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( cl_hudDump, "Dump deduplicated cgame HUD input groups to fnq3-hud-dump.json in the active game directory." );

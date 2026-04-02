@@ -460,7 +460,7 @@ static void Console_Key( int key ) {
 		if ( keys[K_CTRL].down ) {	// hold <ctrl> to accelerate scrolling
 			Con_PageUp( 0 );		// by one visible page
 		} else {
-			Con_PageUp( 1 );
+			Con_PageUp( -1 );
 		}
 		return;
 	}
@@ -469,7 +469,7 @@ static void Console_Key( int key ) {
 		if ( keys[K_CTRL].down ) {	// hold <ctrl> to accelerate scrolling
 			Con_PageDown( 0 );		// by one visible page
 		} else {
-			Con_PageDown( 1 );
+			Con_PageDown( -1 );
 		}
 		return;
 	}

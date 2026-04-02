@@ -21,6 +21,13 @@ FnQuake3 is a modernized Quake III Arena engine project focused on retail compat
 - Performance work should stay practical and measurable.
 - Windows, Linux, macOS, and ARM targets are first-class concerns.
 
+## Features
+
+- Broad 4:3-aware aspect correction for HUDs, menus, UI model widgets, cinematics, and optional console font virtualization. See the embedded [Aspect Correction guide](docs/ASPECT_CORRECTION.md).
+- SDL3 backend support for video, audio, and input on modern platforms.
+- Compatibility-first engine modernization that keeps retail Quake III Arena assets, protocol behavior, and demos as first-class concerns.
+- Multiple renderer and platform targets aimed at practical performance across legacy and modern systems.
+
 ## Quick Start
 
 1. Build the engine for your platform or use a packaged build.
@@ -36,6 +43,7 @@ FnQuake3 is a modernized Quake III Arena engine project focused on retail compat
 ## Documentation
 
 - [Build Guide](BUILD.md) for compiling on supported platforms.
+- [Aspect Correction Guide](docs/ASPECT_CORRECTION.md) for HUD, menu, cinematic, and console scaling behavior.
 - [Technical Notes](docs/TECHNICAL.md) for maintainers, release flow, and repo conventions.
 - [Agent Guide](AGENTS.md) for automation rules and local repository references.
 

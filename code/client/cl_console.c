@@ -48,16 +48,19 @@ typedef struct {
 
 	float	xadjust;		// for wide aspect screens
 
-	float	displayFrac;	// aproaches finalFrac at scr_conspeed
+	float	displayFrac;	// aproaches finalFrac at con_speed
 	float	finalFrac;		// 0.0 to 1.0 lines of console to display
 
 	int		vislines;		// in scanlines
+	float	displayWidth;
+	float	displayLine;
 
 	int		times[NUM_CON_TIMES];	// cls.realtime time the line was generated
 								// for transparent notify lines
 	vec4_t	color;
 
 	int		viswidth;
+	int		visheight;
 	int		vispage;		
 
 	qboolean newline;
@@ -73,8 +76,342 @@ cvar_t		*con_conspeed;
 cvar_t		*con_autoclear;
 cvar_t		*con_notifytime;
 cvar_t		*con_scale;
+cvar_t		*con_scaleUniform;
+cvar_t		*con_screenExtents;
+static cvar_t	*con_backgroundStyle;
+static cvar_t	*con_backgroundColor;
+static cvar_t	*con_backgroundOpacity;
+static cvar_t	*con_scrollSmooth;
+static cvar_t	*con_scrollSmoothSpeed;
+static cvar_t	*con_lineColor;
+static cvar_t	*con_versionColor;
+static cvar_t	*con_fade;
+static cvar_t	*con_speedLegacy;
+static cvar_t	*con_scrollLines;
 
 int			g_console_field_width;
+
+static void Con_Fixup( void );
+
+
+static void Con_ParseColorString( const char *string, const vec4_t defaultColor, vec4_t outColor, qboolean allowAlpha ) {
+	char buffer[MAX_CVAR_VALUE_STRING];
+	char *parts[4];
+	int i;
+	int count;
+
+	for ( i = 0; i < 4; i++ ) {
+		outColor[ i ] = defaultColor[ i ];
+	}
+
+	if ( !string || !string[ 0 ] ) {
+		return;
+	}
+
+	Q_strncpyz( buffer, string, sizeof( buffer ) );
+	count = Com_Split( buffer, parts, allowAlpha ? 4 : 3, ' ' );
+	if ( count < 3 ) {
+		return;
+	}
+
+	for ( i = 0; i < 3; i++ ) {
+		float value = Q_atof( parts[ i ] ) / 255.0f;
+		if ( value < 0.0f ) {
+			value = 0.0f;
+		} else if ( value > 1.0f ) {
+			value = 1.0f;
+		}
+		outColor[ i ] = value;
+	}
+
+	if ( allowAlpha && count >= 4 ) {
+		float value = Q_atof( parts[ 3 ] ) / 255.0f;
+		if ( value < 0.0f ) {
+			value = 0.0f;
+		} else if ( value > 1.0f ) {
+			value = 1.0f;
+		}
+		outColor[ 3 ] = value;
+	}
+}
+
+
+static void Con_GetColorCvar( const cvar_t *cvar, const vec4_t defaultColor, vec4_t outColor, qboolean allowAlpha ) {
+	int i;
+
+	for ( i = 0; i < 4; i++ ) {
+		outColor[ i ] = defaultColor[ i ];
+	}
+
+	if ( cvar && cvar->string[ 0 ] ) {
+		Con_ParseColorString( cvar->string, defaultColor, outColor, allowAlpha );
+	}
+}
+
+
+static void Con_GetBackgroundColor( vec4_t outColor ) {
+	vec4_t defaultColor;
+	float opacity;
+
+	if ( con_backgroundStyle && !con_backgroundStyle->integer ) {
+		defaultColor[ 0 ] = 1.0f;
+		defaultColor[ 1 ] = 1.0f;
+		defaultColor[ 2 ] = 1.0f;
+		defaultColor[ 3 ] = 1.0f;
+	} else {
+		defaultColor[ 0 ] = 0.0f;
+		defaultColor[ 1 ] = 0.0f;
+		defaultColor[ 2 ] = 0.0f;
+		defaultColor[ 3 ] = 1.0f;
+	}
+
+	Con_GetColorCvar( NULL, defaultColor, outColor, qfalse );
+
+	if ( cl_conColor && cl_conColor->string[ 0 ] ) {
+		Con_ParseColorString( cl_conColor->string, outColor, outColor, qtrue );
+	}
+
+	if ( con_backgroundColor && con_backgroundColor->string[ 0 ] ) {
+		float alpha = outColor[ 3 ];
+		Con_ParseColorString( con_backgroundColor->string, outColor, outColor, qfalse );
+		outColor[ 3 ] = alpha;
+	}
+
+	opacity = con_backgroundOpacity ? con_backgroundOpacity->value : 1.0f;
+	if ( opacity < 0.0f ) {
+		opacity = 0.0f;
+	} else if ( opacity > 1.0f ) {
+		opacity = 1.0f;
+	}
+
+	outColor[ 3 ] *= opacity;
+}
+
+
+static void Con_SetScaledColor( const vec4_t color, float alphaScale ) {
+	vec4_t scaledColor;
+
+	scaledColor[ 0 ] = color[ 0 ];
+	scaledColor[ 1 ] = color[ 1 ];
+	scaledColor[ 2 ] = color[ 2 ];
+	scaledColor[ 3 ] = color[ 3 ] * alphaScale;
+	re.SetColor( scaledColor );
+}
+
+
+static float Con_GetFadeAlpha( float frac ) {
+	float alphaScale;
+
+	if ( !con_fade || !con_fade->integer ) {
+		return 1.0f;
+	}
+
+	alphaScale = frac / 0.5f;
+	if ( alphaScale < 0.0f ) {
+		alphaScale = 0.0f;
+	} else if ( alphaScale > 1.0f ) {
+		alphaScale = 1.0f;
+	}
+
+	return alphaScale;
+}
+
+
+static void Con_DrawSmallCharFloat( float x, float y, int ch ) {
+	int row, col;
+	float frow, fcol;
+	float size;
+
+	ch &= 255;
+
+	if ( ch == ' ' ) {
+		return;
+	}
+
+	if ( y < -smallchar_height ) {
+		return;
+	}
+
+	row = ch >> 4;
+	col = ch & 15;
+
+	frow = row * 0.0625f;
+	fcol = col * 0.0625f;
+	size = 0.0625f;
+
+	re.DrawStretchPic( x, y, smallchar_width, smallchar_height,
+		fcol, frow, fcol + size, frow + size,
+		cls.charSetShader );
+}
+
+
+static void Con_UpdateDisplayLine( void ) {
+	float target;
+	float delta;
+	float step;
+	float speed;
+
+	target = (float)con.display;
+
+	if ( !con_scrollSmooth || !con_scrollSmooth->integer ) {
+		con.displayLine = target;
+		return;
+	}
+
+	if ( con.displayLine < 0.0f || con.displayLine > con.current + con.vispage + 1 ) {
+		con.displayLine = target;
+		return;
+	}
+
+	delta = target - con.displayLine;
+	if ( fabs( delta ) < 0.01f ) {
+		con.displayLine = target;
+		return;
+	}
+
+	speed = con_scrollSmoothSpeed ? con_scrollSmoothSpeed->value : 24.0f;
+	if ( speed < 1.0f ) {
+		speed = 1.0f;
+	}
+
+	step = speed * cls.realFrametime * 0.001f;
+	if ( step >= fabs( delta ) ) {
+		con.displayLine = target;
+	} else if ( delta > 0.0f ) {
+		con.displayLine += step;
+	} else {
+		con.displayLine -= step;
+	}
+}
+
+
+static void Con_DrawInputText( field_t *edit, float x, float y, float alphaScale ) {
+	int len;
+	int drawLen;
+	int prestep;
+	int cursorChar;
+	int i;
+	char str[ MAX_STRING_CHARS ];
+	vec4_t color;
+
+	drawLen = edit->widthInChars - 1;
+	if ( drawLen < 1 ) {
+		return;
+	}
+
+	len = strlen( edit->buffer );
+	if ( len <= drawLen ) {
+		prestep = 0;
+	} else {
+		if ( edit->scroll + drawLen > len ) {
+			edit->scroll = len - drawLen;
+			if ( edit->scroll < 0 ) {
+				edit->scroll = 0;
+			}
+		}
+		prestep = edit->scroll;
+	}
+
+	if ( prestep + drawLen > len ) {
+		drawLen = len - prestep;
+	}
+
+	if ( drawLen < 0 ) {
+		drawLen = 0;
+	}
+
+	if ( drawLen >= MAX_STRING_CHARS ) {
+		Com_Error( ERR_DROP, "drawLen >= MAX_STRING_CHARS" );
+	}
+
+	Com_Memcpy( str, edit->buffer + prestep, drawLen );
+	str[ drawLen ] = '\0';
+
+	if ( prestep > 0 && str[ 0 ] ) {
+		str[ 0 ] = '<';
+	}
+
+	color[ 0 ] = 1.0f;
+	color[ 1 ] = 1.0f;
+	color[ 2 ] = 1.0f;
+	color[ 3 ] = 1.0f;
+	Con_SetScaledColor( color, alphaScale );
+
+	for ( i = 0; i < drawLen; i++ ) {
+		Con_DrawSmallCharFloat( x + i * smallchar_width, y, str[ i ] );
+	}
+
+	if ( len > drawLen + prestep ) {
+		Con_DrawSmallCharFloat( x + ( edit->widthInChars - 1 ) * smallchar_width, y, '>' );
+	}
+
+	if ( cls.realtime & 256 ) {
+		re.SetColor( NULL );
+		return;
+	}
+
+	if ( key_overstrikeMode ) {
+		cursorChar = 11;
+	} else {
+		cursorChar = 10;
+	}
+
+	Con_DrawSmallCharFloat( x + ( edit->cursor - prestep ) * smallchar_width, y, cursorChar );
+
+	re.SetColor( NULL );
+}
+
+
+static int Con_GetScrollStep( int lines ) {
+	int maxLines;
+
+	if ( lines > 0 ) {
+		return lines;
+	}
+
+	maxLines = con.vispage - 2;
+	if ( maxLines < 1 ) {
+		maxLines = 1;
+	}
+
+	if ( lines == 0 ) {
+		return maxLines;
+	}
+
+	if ( !con_scrollLines ) {
+		return maxLines < 8 ? maxLines : 8;
+	}
+
+	lines = con_scrollLines->integer;
+	if ( lines < 1 ) {
+		lines = 1;
+	}
+
+	if ( lines > maxLines ) {
+		lines = maxLines;
+	}
+
+	return lines;
+}
+
+
+static void Con_SyncSpeedCvars( void ) {
+	if ( con_speedLegacy && con_speedLegacy->modified ) {
+		if ( con_conspeed && Q_stricmp( con_conspeed->string, con_speedLegacy->string ) ) {
+			Cvar_Set2( "con_speed", con_speedLegacy->string, qtrue );
+		}
+		con_speedLegacy->modified = qfalse;
+		if ( con_conspeed ) {
+			con_conspeed->modified = qfalse;
+		}
+	} else if ( con_conspeed && con_conspeed->modified ) {
+		if ( con_speedLegacy && Q_stricmp( con_speedLegacy->string, con_conspeed->string ) ) {
+			Cvar_Set2( "scr_conspeed", con_conspeed->string, qtrue );
+			con_speedLegacy->modified = qfalse;
+		}
+		con_conspeed->modified = qfalse;
+	}
+}
 
 /*
 ================
@@ -285,47 +622,129 @@ void Con_CheckResize( void )
 {
 	int		i, j, width, oldwidth, oldtotallines, oldcurrent, numlines, numchars;
 	short	tbuf[CON_TEXTSIZE], *src, *dst;
-	static int old_width, old_vispage;
 	int		vispage;
 	float	scale;
+	float	charScale;
+	float	contentWidth;
+	float	contentHeight;
+	float	xadjust;
+	float	displayWidth;
+	qboolean uniformScale;
+	qboolean centeredExtents;
+	qboolean scaleModified;
+	qboolean uniformModified;
+	qboolean extentsModified;
+	qboolean sizeChanged;
+	qboolean widthChanged;
 
-	if ( con.viswidth == cls.glconfig.vidWidth && !con_scale->modified ) {
-		return;
+	scale = con_scale ? con_scale->value : 1.0f;
+	if ( scale <= 0.0f ) {
+		scale = 1.0f;
 	}
 
-	scale = con_scale->value;
+	uniformScale = ( con_scaleUniform && con_scaleUniform->integer ) ? qtrue : qfalse;
+	centeredExtents = ( con_screenExtents && con_screenExtents->integer ) ? qtrue : qfalse;
+	scaleModified = con_scale ? con_scale->modified : qfalse;
+	uniformModified = con_scaleUniform ? con_scaleUniform->modified : qfalse;
+	extentsModified = con_screenExtents ? con_screenExtents->modified : qfalse;
 
-	con.viswidth = cls.glconfig.vidWidth;
+	charScale = scale * cls.con_factor;
+	if ( uniformScale ) {
+		charScale *= cls.scale;
+	}
 
-	smallchar_width = SMALLCHAR_WIDTH * scale * cls.con_factor;
-	smallchar_height = SMALLCHAR_HEIGHT * scale * cls.con_factor;
-	bigchar_width = BIGCHAR_WIDTH * scale * cls.con_factor;
-	bigchar_height = BIGCHAR_HEIGHT * scale * cls.con_factor;
+	smallchar_width = (int)( SMALLCHAR_WIDTH * charScale + 0.5f );
+	smallchar_height = (int)( SMALLCHAR_HEIGHT * charScale + 0.5f );
+	bigchar_width = (int)( BIGCHAR_WIDTH * charScale + 0.5f );
+	bigchar_height = (int)( BIGCHAR_HEIGHT * charScale + 0.5f );
+
+	if ( smallchar_width < 1 ) {
+		smallchar_width = 1;
+	}
+	if ( smallchar_height < 1 ) {
+		smallchar_height = 1;
+	}
+	if ( bigchar_width < 1 ) {
+		bigchar_width = 1;
+	}
+	if ( bigchar_height < 1 ) {
+		bigchar_height = 1;
+	}
 
 	if ( cls.glconfig.vidWidth == 0 ) // video hasn't been initialized yet
 	{
 		g_console_field_width = DEFAULT_CONSOLE_WIDTH;
-		width = DEFAULT_CONSOLE_WIDTH * scale;
+		width = (int)( DEFAULT_CONSOLE_WIDTH * scale + 0.5f );
+		if ( width < 1 ) {
+			width = 1;
+		}
 		con.linewidth = width;
 		con.totallines = CON_TEXTSIZE / con.linewidth;
 		con.vispage = 4;
+		con.viswidth = 0;
+		con.visheight = 0;
+		con.xadjust = 0.0f;
+		con.displayWidth = 0.0f;
+		con.displayLine = 0.0f;
+		g_consoleField.widthInChars = g_console_field_width;
 
 		Con_Clear_f();
 	}
 	else
 	{
-		width = ((cls.glconfig.vidWidth / smallchar_width) - 2);
+		contentWidth = cls.glconfig.vidWidth;
+		contentHeight = cls.glconfig.vidHeight;
+		xadjust = 0.0f;
+		displayWidth = cls.glconfig.vidWidth;
 
-		g_console_field_width = width;
-		g_consoleField.widthInChars = g_console_field_width;
+		if ( centeredExtents ) {
+			if ( cls.biasX > 0.0f ) {
+				contentWidth -= cls.biasX * 2.0f;
+				xadjust = cls.biasX;
+				displayWidth = contentWidth;
+			}
+		}
+
+		if ( contentWidth <= 0.0f ) {
+			contentWidth = cls.glconfig.vidWidth;
+			xadjust = 0.0f;
+			displayWidth = cls.glconfig.vidWidth;
+		}
+
+		width = (int)( contentWidth / smallchar_width ) - 2;
+		if ( width < 1 ) {
+			width = 1;
+		}
 
 		if ( width > MAX_CONSOLE_WIDTH )
 			width = MAX_CONSOLE_WIDTH;
 
-		vispage = cls.glconfig.vidHeight / ( smallchar_height * 2 ) - 1;
+		vispage = (int)( contentHeight / ( smallchar_height * 2 ) ) - 1;
+		if ( vispage < 1 ) {
+			vispage = 1;
+		}
 
-		if ( old_vispage == vispage && old_width == width )
+		sizeChanged = ( con.viswidth != cls.glconfig.vidWidth || con.visheight != cls.glconfig.vidHeight ||
+			con.xadjust != xadjust || con.displayWidth != displayWidth ) ? qtrue : qfalse;
+		widthChanged = ( con.linewidth != width ) ? qtrue : qfalse;
+
+		con.viswidth = cls.glconfig.vidWidth;
+		con.visheight = cls.glconfig.vidHeight;
+		con.xadjust = xadjust;
+		con.displayWidth = displayWidth;
+		g_console_field_width = width;
+		g_consoleField.widthInChars = g_console_field_width;
+
+		if ( !widthChanged && con.vispage == vispage && !sizeChanged && !scaleModified && !uniformModified && !extentsModified ) {
 			return;
+		}
+
+		if ( !widthChanged ) {
+			con.vispage = vispage;
+			Con_Fixup();
+			con.displayLine = (float)con.display;
+			goto done;
+		}
 
 		oldwidth = con.linewidth;
 		oldtotallines = con.totallines;
@@ -334,9 +753,6 @@ void Con_CheckResize( void )
 		con.linewidth = width;
 		con.totallines = CON_TEXTSIZE / con.linewidth;
 		con.vispage = vispage;
-
-		old_vispage = vispage;
-		old_width = width;
 
 		numchars = oldwidth;
 		if ( numchars > con.linewidth )
@@ -366,11 +782,18 @@ void Con_CheckResize( void )
 		Con_ClearNotify();
 
 		con.current = numlines - 1;
+		con.display = con.current;
+		con.displayLine = (float)con.display;
 	}
 
-	con.display = con.current;
-
+done:
 	con_scale->modified = qfalse;
+	if ( con_scaleUniform ) {
+		con_scaleUniform->modified = qfalse;
+	}
+	if ( con_screenExtents ) {
+		con_screenExtents->modified = qfalse;
+	}
 }
 
 
@@ -393,15 +816,62 @@ Con_Init
 */
 void Con_Init( void ) 
 {
+	const char *speedValue;
+
 	con_notifytime = Cvar_Get( "con_notifytime", "3", 0 );
 	Cvar_SetDescription( con_notifytime, "Defines how long messages (from players or the system) are on the screen (in seconds)." );
-	con_conspeed = Cvar_Get( "scr_conspeed", "3", 0 );
+	speedValue = Cvar_VariableString( "con_speed" );
+	if ( !speedValue[ 0 ] ) {
+		speedValue = Cvar_VariableString( "scr_conspeed" );
+	}
+	if ( !speedValue[ 0 ] ) {
+		speedValue = "3";
+	}
+	con_conspeed = Cvar_Get( "con_speed", speedValue, CVAR_ARCHIVE_ND );
 	Cvar_SetDescription( con_conspeed, "Console opening/closing scroll speed." );
+	con_speedLegacy = Cvar_Get( "scr_conspeed", con_conspeed->string, CVAR_NOTABCOMPLETE );
+	Cvar_SetDescription( con_speedLegacy, "Deprecated alias for con_speed." );
 	con_autoclear = Cvar_Get("con_autoclear", "1", CVAR_ARCHIVE_ND);
 	Cvar_SetDescription( con_autoclear, "Enable/disable clearing console input text when console is closed." );
 	con_scale = Cvar_Get( "con_scale", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scale, "0.5", "8", CV_FLOAT );
 	Cvar_SetDescription( con_scale, "Console font size scale." );
+	con_scaleUniform = Cvar_Get( "con_scaleUniform", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_scaleUniform, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_scaleUniform, "Use centered 4:3 uniform scaling for console font metrics instead of native pixel sizing." );
+	con_screenExtents = Cvar_Get( "con_screenExtents", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_screenExtents, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_screenExtents,
+		"Console display extents:\n"
+		" 0 - use the full screen width\n"
+		" 1 - keep the console display in centered 4:3 space" );
+	con_scrollLines = Cvar_Get( "con_scrollLines", "8", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_scrollLines, "1", "256", CV_INTEGER );
+	Cvar_SetDescription( con_scrollLines, "Number of console lines scrolled per step, clamped to the current visible console page." );
+	con_backgroundStyle = Cvar_Get( "con_backgroundStyle", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_backgroundStyle, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_backgroundStyle,
+		"Console background style:\n"
+		" 0 - legacy textured background\n"
+		" 1 - flat shaded background" );
+	con_backgroundColor = Cvar_Get( "con_backgroundColor", "", CVAR_ARCHIVE_ND );
+	Cvar_SetDescription( con_backgroundColor, "Console background RGB color as R G B values from 0-255. Empty keeps the style default or legacy cl_conColor fallback." );
+	con_backgroundOpacity = Cvar_Get( "con_backgroundOpacity", "1", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_backgroundOpacity, "0", "1", CV_FLOAT );
+	Cvar_SetDescription( con_backgroundOpacity, "Console background opacity from 0 to 1." );
+	con_scrollSmooth = Cvar_Get( "con_scrollSmooth", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_scrollSmooth, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_scrollSmooth, "Smoothly animate console scrollback and new line movement." );
+	con_scrollSmoothSpeed = Cvar_Get( "con_scrollSmoothSpeed", "24", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_scrollSmoothSpeed, "1", "240", CV_FLOAT );
+	Cvar_SetDescription( con_scrollSmoothSpeed, "Console smooth scrolling speed in lines per second." );
+	con_lineColor = Cvar_Get( "con_lineColor", "255 0 0", CVAR_ARCHIVE_ND );
+	Cvar_SetDescription( con_lineColor, "Console separator and scrollback marker RGB color as R G B values from 0-255." );
+	con_versionColor = Cvar_Get( "con_versionColor", "255 0 0", CVAR_ARCHIVE_ND );
+	Cvar_SetDescription( con_versionColor, "Console version text RGB color as R G B values from 0-255." );
+	con_fade = Cvar_Get( "con_fade", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_fade, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_fade, "Fade console background and text in and out while opening or closing the console." );
 
 	Field_Clear( &g_consoleField );
 	g_consoleField.widthInChars = g_console_field_width;
@@ -455,6 +925,12 @@ static void Con_Fixup( void )
 		con.display = con.current - filled + con.vispage;
 	} else if ( con.display > con.current ) {
 		con.display = con.current;
+	}
+
+	if ( !con_scrollSmooth || !con_scrollSmooth->integer ||
+		con.displayLine < (float)( con.current - con.totallines ) ||
+		con.displayLine > (float)( con.current + con.vispage + 1 ) ) {
+		con.displayLine = (float)con.display;
 	}
 }
 
@@ -631,8 +1107,9 @@ Con_DrawInput
 Draw the editline after a ] prompt
 ================
 */
-static void Con_DrawInput( void ) {
+static void Con_DrawInput( float alphaScale ) {
 	int		y;
+	vec4_t	color;
 
 	if ( cls.state != CA_DISCONNECTED && !(Key_GetCatcher( ) & KEYCATCH_CONSOLE ) ) {
 		return;
@@ -640,12 +1117,14 @@ static void Con_DrawInput( void ) {
 
 	y = con.vislines - ( smallchar_height * 2 );
 
-	re.SetColor( con.color );
+	color[ 0 ] = con.color[ 0 ];
+	color[ 1 ] = con.color[ 1 ];
+	color[ 2 ] = con.color[ 2 ];
+	color[ 3 ] = con.color[ 3 ];
 
-	SCR_DrawSmallChar( con.xadjust + 1 * smallchar_width, y, ']' );
-
-	Field_Draw( &g_consoleField, con.xadjust + 2 * smallchar_width, y,
-		SCREEN_WIDTH - 3 * smallchar_width, qtrue, qtrue );
+	Con_SetScaledColor( color, alphaScale );
+	Con_DrawSmallCharFloat( con.xadjust + 1 * smallchar_width, y, ']' );
+	Con_DrawInputText( &g_consoleField, con.xadjust + 2 * smallchar_width, y, alphaScale );
 }
 
 
@@ -738,20 +1217,19 @@ Draws the console with the solid background
 ================
 */
 static void Con_DrawSolidConsole( float frac ) {
-
-	static float conColorValue[4] = { 0.0, 0.0, 0.0, 0.0 };
-	// for cvar value change tracking
-	static char  conColorString[ MAX_CVAR_VALUE_STRING ] = { '\0' };
-
-	int				i, x, y;
+	int				i, x;
 	int				rows;
 	short			*text;
 	int				row;
 	int				lines;
 	int				currentColorIndex;
 	int				colorIndex;
-	float			yf, wf;
-	char			buf[ MAX_CVAR_VALUE_STRING ], *v[4];
+	float			xf, yf, wf;
+	float			alphaScale;
+	float			drawY;
+	vec4_t			backgroundColor;
+	vec4_t			lineColor;
+	vec4_t			versionColor;
 
 	lines = cls.glconfig.vidHeight * frac;
 	if ( lines <= 0 )
@@ -763,69 +1241,56 @@ static void Con_DrawSolidConsole( float frac ) {
 	if ( lines > cls.glconfig.vidHeight )
 		lines = cls.glconfig.vidHeight;
 
-	wf = SCREEN_WIDTH;
-
-	// draw the background
-	yf = frac * SCREEN_HEIGHT;
-
-	// on wide screens, we will center the text
-	con.xadjust = 0;
-	SCR_AdjustFrom640( &con.xadjust, &yf, &wf, NULL );
+	xf = con.xadjust;
+	wf = con.displayWidth;
+	if ( wf <= 0.0f ) {
+		xf = 0.0f;
+		wf = cls.glconfig.vidWidth;
+	}
+	yf = lines;
+	alphaScale = Con_GetFadeAlpha( frac );
+	Con_GetBackgroundColor( backgroundColor );
+	Con_GetColorCvar( con_lineColor, g_color_table[ ColorIndex( COLOR_RED ) ], lineColor, qfalse );
+	Con_GetColorCvar( con_versionColor, lineColor, versionColor, qfalse );
 
 	if ( yf < 1.0 ) {
 		yf = 0;
 	} else {
-		// custom console background color
-		if ( cl_conColor->string[0] ) {
-			// track changes
-			if ( strcmp( cl_conColor->string, conColorString ) ) 
-			{
-				Q_strncpyz( conColorString, cl_conColor->string, sizeof( conColorString ) );
-				Q_strncpyz( buf, cl_conColor->string, sizeof( buf ) );
-				Com_Split( buf, v, 4, ' ' );
-				for ( i = 0; i < 4 ; i++ ) {
-					conColorValue[ i ] = Q_atof( v[ i ] ) / 255.0f;
-					if ( conColorValue[ i ] > 1.0f ) {
-						conColorValue[ i ] = 1.0f;
-					} else if ( conColorValue[ i ] < 0.0f ) {
-						conColorValue[ i ] = 0.0f;
-					}
-				}
-			}
-			re.SetColor( conColorValue );
-			re.DrawStretchPic( 0, 0, wf, yf, 0, 0, 1, 1, cls.whiteShader );
+		Con_SetScaledColor( backgroundColor, alphaScale );
+		if ( con_backgroundStyle && con_backgroundStyle->integer ) {
+			re.DrawStretchPic( xf, 0, wf, yf, 0, 0, 1, 1, cls.whiteShader );
 		} else {
-			re.SetColor( g_color_table[ ColorIndex( COLOR_WHITE ) ] );
-			re.DrawStretchPic( 0, 0, wf, yf, 0, 0, 1, 1, cls.consoleShader );
+			re.DrawStretchPic( xf, 0, wf, yf, 0, 0, 1, 1, cls.consoleShader );
 		}
-
 	}
 
-	re.SetColor( g_color_table[ ColorIndex( COLOR_RED ) ] );
-	re.DrawStretchPic( 0, yf, wf, 2, 0, 0, 1, 1, cls.whiteShader );
-
-	//y = yf;
+	Con_SetScaledColor( lineColor, alphaScale );
+	re.DrawStretchPic( xf, yf, wf, 2, 0, 0, 1, 1, cls.whiteShader );
 
 	// draw the version number
-	SCR_DrawSmallString( cls.glconfig.vidWidth - ( ARRAY_LEN( Q3_VERSION ) ) * smallchar_width,
+	Con_SetScaledColor( versionColor, alphaScale );
+	SCR_DrawSmallString( xf + wf - ( ARRAY_LEN( Q3_VERSION ) - 1 ) * smallchar_width,
 		lines - smallchar_height, Q3_VERSION, ARRAY_LEN( Q3_VERSION ) - 1 );
 
 	// draw the text
 	con.vislines = lines;
-	rows = lines / smallchar_width - 1;	// rows of text to draw
+	rows = lines / smallchar_height - 1;	// rows of text to draw
 
-	y = lines - (smallchar_height * 3);
-
-	row = con.display;
+	drawY = lines - (smallchar_height * 3);
+	row = (int)con.displayLine;
+	if ( (float)row < con.displayLine ) {
+		row++;
+	}
+	drawY += ( row - con.displayLine ) * smallchar_height;
 
 	// draw from the bottom up
 	if ( con.display != con.current )
 	{
 		// draw arrows to show the buffer is backscrolled
-		re.SetColor( g_color_table[ ColorIndex( COLOR_RED ) ] );
+		Con_SetScaledColor( lineColor, alphaScale );
 		for ( x = 0 ; x < con.linewidth ; x += 4 )
-			SCR_DrawSmallChar( con.xadjust + (x+1)*smallchar_width, y, '^' );
-		y -= smallchar_height;
+			Con_DrawSmallCharFloat( con.xadjust + (x+1)*smallchar_width, drawY, '^' );
+		drawY -= smallchar_height;
 		row--;
 	}
 
@@ -833,21 +1298,21 @@ static void Con_DrawSolidConsole( float frac ) {
 	if ( download.progress[ 0 ] ) 
 	{
 		currentColorIndex = ColorIndex( COLOR_CYAN );
-		re.SetColor( g_color_table[ currentColorIndex ] );
+		Con_SetScaledColor( g_color_table[ currentColorIndex ], alphaScale );
 
 		i = strlen( download.progress );
 		for ( x = 0 ; x < i ; x++ ) 
 		{
-			SCR_DrawSmallChar( ( x + 1 ) * smallchar_width,
+			Con_DrawSmallCharFloat( con.xadjust + ( x + 1 ) * smallchar_width,
 				lines - smallchar_height, download.progress[x] );
 		}
 	}
 #endif
 
 	currentColorIndex = ColorIndex( COLOR_WHITE );
-	re.SetColor( g_color_table[ currentColorIndex ] );
+	Con_SetScaledColor( g_color_table[ currentColorIndex ], alphaScale );
 
-	for ( i = 0 ; i < rows ; i++, y -= smallchar_height, row-- )
+	for ( i = 0 ; i <= rows ; i++, drawY -= smallchar_height, row-- )
 	{
 		if ( row < 0 )
 			break;
@@ -868,14 +1333,14 @@ static void Con_DrawSolidConsole( float frac ) {
 			colorIndex = ( text[ x ] >> 8 ) & 63;
 			if ( currentColorIndex != colorIndex ) {
 				currentColorIndex = colorIndex;
-				re.SetColor( g_color_table[ colorIndex ] );
+				Con_SetScaledColor( g_color_table[ colorIndex ], alphaScale );
 			}
-			SCR_DrawSmallChar( con.xadjust + (x + 1) * smallchar_width, y, text[x] & 0xff );
+			Con_DrawSmallCharFloat( con.xadjust + (x + 1) * smallchar_width, drawY, text[x] & 0xff );
 		}
 	}
 
 	// draw the input prompt, user text, and cursor if desired
-	Con_DrawInput();
+	Con_DrawInput( alphaScale );
 
 	re.SetColor( NULL );
 }
@@ -920,6 +1385,8 @@ Scroll it up or down
 */
 void Con_RunConsole( void ) 
 {
+	Con_SyncSpeedCvars();
+
 	// decide on the destination height of the console
 	if ( Key_GetCatcher( ) & KEYCATCH_CONSOLE )
 		con.finalFrac = 0.5;	// half screen
@@ -940,13 +1407,14 @@ void Con_RunConsole( void )
 		if ( con.finalFrac < con.displayFrac )
 			con.displayFrac = con.finalFrac;
 	}
+
+	Con_UpdateDisplayLine();
 }
 
 
 void Con_PageUp( int lines )
 {
-	if ( lines == 0 )
-		lines = con.vispage - 2;
+	lines = Con_GetScrollStep( lines );
 
 	con.display -= lines;
 	
@@ -956,8 +1424,7 @@ void Con_PageUp( int lines )
 
 void Con_PageDown( int lines )
 {
-	if ( lines == 0 )
-		lines = con.vispage - 2;
+	lines = Con_GetScrollStep( lines );
 
 	con.display += lines;
 
@@ -992,4 +1459,5 @@ void Con_Close( void )
 	Key_SetCatcher( Key_GetCatcher( ) & ~KEYCATCH_CONSOLE );
 	con.finalFrac = 0.0;			// none visible
 	con.displayFrac = 0.0;
+	con.displayLine = (float)con.display;
 }

@@ -246,7 +246,8 @@ static qboolean CL_HudLoadRules( qboolean verbose ) {
 
 	length = FS_ReadFile( FNQ3_HUD_SCRIPT_FILE, &buffer );
 	if ( length <= 0 || !buffer ) {
-		if ( verbose || ( !hudScriptWarned && cl_hudAspect && cl_hudAspect->integer == 2 ) ) {
+		hudScriptLoaded = qtrue;
+		if ( verbose || ( !hudScriptWarned && cl_hudAspect && cl_hudAspect->integer > 0 ) ) {
 			Com_Printf( S_COLOR_YELLOW "HUD: no script loaded from %s, using centered uniform placement.\n", FNQ3_HUD_SCRIPT_FILE );
 			hudScriptWarned = qtrue;
 		}
@@ -265,6 +266,7 @@ static qboolean CL_HudLoadRules( qboolean verbose ) {
 	}
 
 	if ( !rulesJson || JSON_ValueGetType( rulesJson, jsonEnd ) != JSONTYPE_ARRAY ) {
+		hudScriptLoaded = qtrue;
 		if ( verbose || !hudScriptWarned ) {
 			Com_Printf( S_COLOR_YELLOW "HUD: invalid script format in %s.\n", FNQ3_HUD_SCRIPT_FILE );
 			hudScriptWarned = qtrue;
@@ -351,7 +353,7 @@ static qboolean CL_HudLoadRules( qboolean verbose ) {
 
 
 static void CL_HudEnsureRules( void ) {
-	if ( !cl_hudAspect || cl_hudAspect->integer != 2 ) {
+	if ( !cl_hudAspect || cl_hudAspect->integer <= 0 ) {
 		return;
 	}
 
@@ -920,7 +922,7 @@ void CL_HudDrawStretchPic( float x, float y, float w, float h, float s1, float t
 	alignX = HUD_ALIGN_CENTER;
 	alignY = HUD_ALIGN_MIDDLE;
 
-	if ( cl_hudAspect->integer >= 2 ) {
+	if ( hudScriptLoaded && hudNumRules > 0 ) {
 		const hudRule_t *rule;
 
 		rule = CL_HudFindRule( &draw );
