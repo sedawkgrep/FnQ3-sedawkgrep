@@ -18,6 +18,8 @@ If you just want the short version: you can choose whether the console stays ful
 - `con_scrollSmooth 0`: Keep console scrollback movement immediate.
 - `con_scrollSmooth 1`: Smoothly animate scrollback movement and new-line pushes.
 - `con_scrollSmoothSpeed`: Set the smooth-scroll speed in lines per second.
+- `con_completionPopup 0`: Disable the live completion popup and keep classic `Tab` completion behavior.
+- `con_completionPopup 1`: Show the live completion popup while typing. This is the default.
 - `con_fade 0`: Keep console open and close transitions fully opaque.
 - `con_fade 1`: Fade console background, text, and accents in and out while it opens or closes.
 - `con_backgroundStyle 0`: Use the classic textured console background.
@@ -83,6 +85,8 @@ The console supports real text selection and clipboard workflows for both the in
 
 Console input now exposes live, tab-based completion instead of only dumping a static match list after a completion request.
 
+- `con_completionPopup 1` keeps the live popup enabled and is the default setting.
+- `con_completionPopup 0` disables the popup and falls back to the classic one-shot `Tab` completion flow.
 - Matching updates as you type, so you can see where a command is going before you commit to it.
 - `Tab` accepts the current match and cycles forward through alternatives.
 - `Shift+Tab` cycles backward through alternatives.

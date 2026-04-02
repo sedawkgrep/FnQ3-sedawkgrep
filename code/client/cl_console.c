@@ -92,6 +92,7 @@ typedef struct {
 	int		completionReplaceLength;
 	int		completionSnapshotCursor;
 	qboolean completionAppendSpace;
+	qboolean completionPopupVisible;
 	qboolean completionPrependSlash;
 	qboolean completionSnapshotValid;
 	qboolean textDragPending;
@@ -133,6 +134,7 @@ static cvar_t	*con_backgroundColor;
 static cvar_t	*con_backgroundOpacity;
 static cvar_t	*con_scrollSmooth;
 static cvar_t	*con_scrollSmoothSpeed;
+static cvar_t	*con_completionPopup;
 static cvar_t	*con_lineColor;
 static cvar_t	*con_versionColor;
 static cvar_t	*con_fade;
@@ -766,6 +768,7 @@ static void Con_SetLogCursor( int line, int column, qboolean keepSelection ) {
 	con.logSelectionColumn = column;
 	con.focus = CON_FOCUS_LOG;
 	Con_ClearInputSelection();
+	Con_InvalidateCompletionState();
 }
 
 
@@ -840,6 +843,7 @@ static void Con_SelectAllLog( void ) {
 	con.logSelectionAnchorColumn = 0;
 	con.logSelectionLine = con.current;
 	con.logSelectionColumn = con.linewidth;
+	Con_InvalidateCompletionState();
 }
 
 
@@ -878,6 +882,7 @@ static void Con_InvalidateCompletionState( void ) {
 	con.completionReplaceOffset = 0;
 	con.completionReplaceLength = 0;
 	con.completionAppendSpace = qfalse;
+	con.completionPopupVisible = qfalse;
 	con.completionPrependSlash = qfalse;
 	con.completionSnapshotValid = qfalse;
 	con.completionSnapshotCursor = 0;
@@ -1002,6 +1007,45 @@ static qboolean Con_CurrentTokenMatchesSelectedCompletion( void ) {
 }
 
 
+static qboolean Con_CompletionPopupEnabled( void ) {
+	return ( con_completionPopup && con_completionPopup->integer ) ? qtrue : qfalse;
+}
+
+
+static qboolean Con_HasActiveCompletionPopup( void ) {
+	return ( Con_CompletionPopupEnabled() &&
+		con.completionPopupVisible &&
+		con.focus == CON_FOCUS_INPUT &&
+		!con.textDragging &&
+		con.completionCount > 0 ) ? qtrue : qfalse;
+}
+
+
+static void Con_DismissCompletionPopup( void ) {
+	con.completionCount = 0;
+	con.completionSelection = 0;
+	con.completionAppendSpace = qfalse;
+	con.completionPopupVisible = qfalse;
+	con.completionPrependSlash = qfalse;
+	con.completionSnapshotValid = qtrue;
+	con.completionSnapshotCursor = g_consoleField.cursor;
+	Q_strncpyz( con.completionSnapshotBuffer, g_consoleField.buffer, sizeof( con.completionSnapshotBuffer ) );
+}
+
+
+static void Con_MoveCompletionSelection( int delta ) {
+	if ( con.completionCount < 1 || delta == 0 ) {
+		return;
+	}
+
+	if ( delta < 0 ) {
+		con.completionSelection = ( con.completionSelection + con.completionCount - 1 ) % con.completionCount;
+	} else {
+		con.completionSelection = ( con.completionSelection + 1 ) % con.completionCount;
+	}
+}
+
+
 static void Con_RefreshCompletionState( void ) {
 	char prefixBuffer[ MAX_EDIT_LINE ];
 	char fullSegment[ MAX_EDIT_LINE ];
@@ -1029,6 +1073,7 @@ static void Con_RefreshCompletionState( void ) {
 		con.completionCount = 0;
 		con.completionSelection = 0;
 		con.completionAppendSpace = qfalse;
+		con.completionPopupVisible = qfalse;
 		con.completionPrependSlash = qfalse;
 		con.completionSnapshotValid = qtrue;
 		con.completionSnapshotCursor = cursor;
@@ -1072,6 +1117,7 @@ static void Con_RefreshCompletionState( void ) {
 	appendSpace = qfalse;
 	if ( Field_QueryCompletionMatches( prefixBuffer, &appendSpace, Con_CollectCompletionMatch, NULL ) < 1 ||
 		con.completionCount < 1 ) {
+		con.completionPopupVisible = qfalse;
 		con.completionSnapshotValid = qtrue;
 		con.completionSnapshotCursor = cursor;
 		Q_strncpyz( con.completionSnapshotBuffer, buffer, sizeof( con.completionSnapshotBuffer ) );
@@ -1166,6 +1212,12 @@ static void Con_ApplySelectedCompletion( int direction ) {
 	int suffixLen;
 	qboolean addSpace = qfalse;
 
+	if ( !Con_CompletionPopupEnabled() ) {
+		Field_AutoComplete( &g_consoleField );
+		Con_InvalidateCompletionState();
+		return;
+	}
+
 	Con_RefreshCompletionState();
 
 	if ( con.completionCount < 1 ) {
@@ -1180,7 +1232,7 @@ static void Con_ApplySelectedCompletion( int direction ) {
 		} else if ( con.completionCount > 1 ) {
 			con.completionSelection = ( con.completionSelection + con.completionCount - 1 ) % con.completionCount;
 		}
-	} else if ( Con_CurrentTokenMatchesSelectedCompletion() && con.completionCount > 1 ) {
+	} else if ( direction > 0 && Con_CurrentTokenMatchesSelectedCompletion() && con.completionCount > 1 ) {
 		con.completionSelection = ( con.completionSelection + 1 ) % con.completionCount;
 	}
 
@@ -1988,10 +2040,17 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 	vec4_t selectionColor;
 	vec4_t textColor;
 
-	Con_RefreshCompletionState();
-	if ( con.completionCount < 1 || con.textDragging ) {
+	if ( !Con_CompletionPopupEnabled() ) {
+		con.completionPopupVisible = qfalse;
 		return;
 	}
+
+	Con_RefreshCompletionState();
+	if ( con.completionCount < 1 || con.textDragging ) {
+		con.completionPopupVisible = qfalse;
+		return;
+	}
+	con.completionPopupVisible = qtrue;
 
 	visibleCount = con.completionCount;
 	if ( visibleCount > CON_COMPLETION_MAX_VISIBLE ) {
@@ -2288,6 +2347,59 @@ qboolean Con_InputKey( int key ) {
 		return qtrue;
 	}
 
+	if ( Con_HasActiveCompletionPopup() ) {
+		switch ( key ) {
+		case K_UPARROW:
+		case K_KP_UPARROW:
+		case K_MWHEELUP:
+			Con_MoveCompletionSelection( -1 );
+			return qtrue;
+		case K_DOWNARROW:
+		case K_KP_DOWNARROW:
+		case K_MWHEELDOWN:
+			Con_MoveCompletionSelection( 1 );
+			return qtrue;
+		case K_PGUP:
+			con.completionSelection -= CON_COMPLETION_MAX_VISIBLE;
+			if ( con.completionSelection < 0 ) {
+				con.completionSelection = 0;
+			}
+			return qtrue;
+		case K_PGDN:
+			con.completionSelection += CON_COMPLETION_MAX_VISIBLE;
+			if ( con.completionSelection >= con.completionCount ) {
+				con.completionSelection = con.completionCount - 1;
+			}
+			return qtrue;
+		case K_HOME:
+			con.completionSelection = 0;
+			return qtrue;
+		case K_END:
+			con.completionSelection = con.completionCount - 1;
+			return qtrue;
+		case K_ENTER:
+		case K_KP_ENTER:
+			Con_ApplySelectedCompletion( 0 );
+			Con_DismissCompletionPopup();
+			return qtrue;
+		default:
+			break;
+		}
+
+		if ( keys[ K_CTRL ].down ) {
+			switch ( lowerKey ) {
+			case 'p':
+				Con_MoveCompletionSelection( -1 );
+				return qtrue;
+			case 'n':
+				Con_MoveCompletionSelection( 1 );
+				return qtrue;
+			default:
+				break;
+			}
+		}
+	}
+
 	if ( keys[ K_CTRL ].down ) {
 		switch ( lowerKey ) {
 		case 'a':
@@ -2321,7 +2433,12 @@ qboolean Con_InputKey( int key ) {
 	}
 
 	if ( key == K_TAB ) {
-		Con_ApplySelectedCompletion( keys[ K_SHIFT ].down ? -1 : 1 );
+		if ( Con_CompletionPopupEnabled() ) {
+			Con_ApplySelectedCompletion( keys[ K_SHIFT ].down ? -1 : 1 );
+		} else {
+			Field_AutoComplete( &g_consoleField );
+			Con_InvalidateCompletionState();
+		}
 		return qtrue;
 	}
 
@@ -3045,7 +3162,7 @@ void Con_Init( void )
 	con_scale = Cvar_Get( "con_scale", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scale, "0.5", "8", CV_FLOAT );
 	Cvar_SetDescription( con_scale, "Console font size scale." );
-	con_scaleUniform = Cvar_Get( "con_scaleUniform", "0", CVAR_ARCHIVE_ND );
+	con_scaleUniform = Cvar_Get( "con_scaleUniform", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scaleUniform, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( con_scaleUniform, "Use centered 4:3 uniform scaling for console font metrics instead of native pixel sizing." );
 	con_screenExtents = Cvar_Get( "con_screenExtents", "0", CVAR_ARCHIVE_ND );
@@ -3065,15 +3182,18 @@ void Con_Init( void )
 		" 1 - flat shaded background" );
 	con_backgroundColor = Cvar_Get( "con_backgroundColor", "", CVAR_ARCHIVE_ND );
 	Cvar_SetDescription( con_backgroundColor, "Console background RGB color as R G B values from 0-255. Empty keeps the style default or legacy cl_conColor fallback." );
-	con_backgroundOpacity = Cvar_Get( "con_backgroundOpacity", "1", CVAR_ARCHIVE_ND );
+	con_backgroundOpacity = Cvar_Get( "con_backgroundOpacity", "0.8", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_backgroundOpacity, "0", "1", CV_FLOAT );
 	Cvar_SetDescription( con_backgroundOpacity, "Console background opacity from 0 to 1." );
-	con_scrollSmooth = Cvar_Get( "con_scrollSmooth", "0", CVAR_ARCHIVE_ND );
+	con_scrollSmooth = Cvar_Get( "con_scrollSmooth", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scrollSmooth, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( con_scrollSmooth, "Smoothly animate console scrollback and new line movement." );
 	con_scrollSmoothSpeed = Cvar_Get( "con_scrollSmoothSpeed", "24", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scrollSmoothSpeed, "1", "240", CV_FLOAT );
 	Cvar_SetDescription( con_scrollSmoothSpeed, "Console smooth scrolling speed in lines per second." );
+	con_completionPopup = Cvar_Get( "con_completionPopup", "1", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_completionPopup, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_completionPopup, "Show the live console completion popup while typing. Disable to keep classic Tab completion behavior." );
 	con_lineColor = Cvar_Get( "con_lineColor", "255 0 0", CVAR_ARCHIVE_ND );
 	Cvar_SetDescription( con_lineColor, "Console separator and scrollback marker RGB color as R G B values from 0-255." );
 	con_versionColor = Cvar_Get( "con_versionColor", "255 0 0", CVAR_ARCHIVE_ND );
@@ -3461,6 +3581,7 @@ static void Con_DrawSolidConsole( float frac ) {
 	int				colorIndex;
 	float			xf, yf, wf;
 	float			alphaScale;
+	float			markerY;
 	float			drawY;
 	vec4_t			backgroundColor;
 	vec4_t			lineColor;
@@ -3512,7 +3633,8 @@ static void Con_DrawSolidConsole( float frac ) {
 	Con_UpdateScrollbarHover();
 	rows = Con_GetLogRowCount();	// rows of text to draw
 
-	drawY = lines - (smallchar_height * 3);
+	markerY = lines - (smallchar_height * 3);
+	drawY = markerY;
 	row = (int)con.displayLine;
 	if ( (float)row < con.displayLine ) {
 		row++;
@@ -3525,7 +3647,7 @@ static void Con_DrawSolidConsole( float frac ) {
 		// draw arrows to show the buffer is backscrolled
 		Con_SetScaledColor( lineColor, alphaScale );
 		for ( x = 0 ; x < con.linewidth ; x += 4 )
-			Con_DrawSmallCharFloat( con.xadjust + (x+1)*smallchar_width, drawY, '^' );
+			Con_DrawSmallCharFloat( con.xadjust + (x+1)*smallchar_width, markerY, '^' );
 		drawY -= smallchar_height;
 		row--;
 	}

@@ -2,7 +2,7 @@
 
 # FnQuake3
 
-Fappin' Quake III, for a fappin' good time.
+Fappin' Quake III, shortened to FnQuake3 or FnQ3.
 
 <p>
   <a href="BUILD.md"><img alt="Build Guide" src="https://img.shields.io/badge/Build-Guide-1f2937?style=for-the-badge"></a>
@@ -24,7 +24,7 @@ FnQuake3 is a modernized Quake III Arena engine project built around a simple go
 ## Features
 
 - Flexible 4:3-aware aspect correction for HUDs, menus, UI model widgets, and cinematics, with sensible widescreen options when you want them. See the [Aspect Correction guide](docs/ASPECT_CORRECTION.md).
-- A much more capable console, including configurable scaling, smoother scrolling, mouse interaction, text selection, drag and drop, and live tab completion. See the [Console guide](docs/CONSOLE.md).
+- A much more capable console, including configurable scaling, smoother scrolling, mouse interaction, text selection, drag and drop, and an optional live tab-completion popup. See the [Console guide](docs/CONSOLE.md).
 - CPMA/CNQ3-style rainbow text color escapes, with live preview right in the console input line.
 - SDL3 support for video, audio, and input on modern platforms.
 - Compatibility-first engine work that keeps retail assets, protocol behavior, and demos at the center of the project.

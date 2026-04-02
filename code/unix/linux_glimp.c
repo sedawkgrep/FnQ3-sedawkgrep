@@ -2127,6 +2127,8 @@ char *Sys_GetClipboardData( void )
 	Atom type;
 	XEvent ev;
 	char *buf;
+	char *cutBuffer;
+	int cutBufferLength;
 	int format;
 
 	XConvertSelection( dpy, XA_PRIMARY, xtarget, XA_PRIMARY, win, CurrentTime );
@@ -2149,7 +2151,44 @@ char *Sys_GetClipboardData( void )
 			fprintf( stderr, "Clipboard allocation failed\n" );
 		}
 	}
+
+	cutBuffer = XFetchBytes( dpy, &cutBufferLength );
+	if ( cutBuffer && cutBufferLength > 0 ) {
+		buf = Z_Malloc( cutBufferLength + 1 );
+		Q_strncpyz( buf, cutBuffer, cutBufferLength + 1 );
+		strtok( buf, "\n\r\b" );
+		XFree( cutBuffer );
+		return buf;
+	}
+	if ( cutBuffer ) {
+		XFree( cutBuffer );
+	}
 	return NULL;
+}
+
+
+/*
+=================
+Sys_SetClipboardData
+=================
+*/
+void Sys_SetClipboardData( const char *text )
+{
+	if ( !dpy ) {
+		return;
+	}
+
+	if ( !text ) {
+		text = "";
+	}
+
+	/*
+	 * The legacy non-SDL X11 backend does not implement full selection-owner
+	 * handling. Store the text in the X cut buffer so copy/paste remains usable
+	 * for the console without introducing a larger clipboard event path here.
+	 */
+	XStoreBytes( dpy, text, strlen( text ) );
+	XFlush( dpy );
 }
 
 

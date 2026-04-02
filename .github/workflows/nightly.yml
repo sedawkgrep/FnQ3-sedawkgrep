@@ -3,6 +3,9 @@ name: nightly
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   schedule:
     - cron: '0 3 * * *'
@@ -179,17 +182,17 @@ jobs:
 
           - arch: x86_64
             rule: install
-            use_sdl: USE_SDL=1
+            use_sdl: USE_SDL=0
     steps:
       - name: Install tools
         run: |
           if [ ${{ matrix.arch }} == "x86" ]; then
             sudo dpkg --add-architecture i386
             sudo apt-get -qq update
-            sudo apt-get -y install gcc-multilib libcurl4-openssl-dev:i386 mesa-common-dev:i386 libxxf86dga-dev:i386 libxrandr-dev:i386 libxxf86vm-dev:i386 libasound-dev:i386
+            sudo apt-get -y install gcc-multilib libcurl4-openssl-dev:i386 mesa-common-dev:i386 libxxf86dga-dev:i386 libxrandr-dev:i386 libxxf86vm-dev:i386 libasound2-dev:i386
           else
             sudo apt-get -qq update
-            sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev libsdl3-dev
+            sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev
           fi
 
       - uses: actions/checkout@v4
@@ -222,7 +225,7 @@ jobs:
         run: |
           sudo apt-get -qq update
           sudo apt-get install -y make gcc g++
-          sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev libsdl3-dev
+          sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev
 
       - uses: actions/checkout@v4
         with:
@@ -233,9 +236,9 @@ jobs:
 
       - name: Build
         run: |
-          make install -j$(nproc) ARCH=arm64 CC=gcc DESTDIR=bin USE_SDL=1 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
-          make clean ARCH=arm64
-          make install -j$(nproc) ARCH=arm64 CC=gcc DESTDIR=bin USE_SDL=1 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+          make install -j$(nproc) ARCH=aarch64 COMPILE_ARCH=aarch64 CC=gcc DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
+          make clean ARCH=aarch64
+          make install -j$(nproc) ARCH=aarch64 COMPILE_ARCH=aarch64 CC=gcc DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
 
       - uses: actions/upload-artifact@v4
         with:
