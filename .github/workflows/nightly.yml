@@ -1,0 +1,335 @@
+name: nightly
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Force a nightly rebuild even if HEAD already matches the current nightly tag.
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.meta.outputs.should_build }}
+      build_number: ${{ steps.meta.outputs.build_number }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+      base_version: ${{ steps.meta.outputs.base_version }}
+      version_string: ${{ steps.meta.outputs.version_string }}
+      head_commit: ${{ steps.meta.outputs.head_commit }}
+      head_commit_short: ${{ steps.meta.outputs.head_commit_short }}
+      previous_nightly_commit: ${{ steps.meta.outputs.previous_nightly_commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch tags
+        run: git fetch --force --tags origin
+
+      - name: Resolve nightly metadata
+        id: meta
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+          python scripts/nightly.py github-output --build-date "$(date -u +%F)" $FORCE_FLAG >> "$GITHUB_OUTPUT"
+
+      - name: Summarize
+        run: |
+          echo "Nightly build required: ${{ steps.meta.outputs.should_build }}"
+          echo "Base version: ${{ steps.meta.outputs.base_version }}"
+          echo "Build version: ${{ steps.meta.outputs.version_string }}"
+          echo "Head commit: ${{ steps.meta.outputs.head_commit }}"
+          echo "Previous nightly commit: ${{ steps.meta.outputs.previous_nightly_commit }}"
+
+  windows-msys32:
+    if: needs.prepare.outputs.should_build == 'true'
+    needs: [prepare]
+    name: Release Windows-msys32 ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x86_64]
+        include:
+          - arch: x86
+            rule: install
+          - arch: x86_64
+            rule: install
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v4
+
+      - name: Stamp nightly build version
+        run: python scripts/nightly.py stamp-version --build-number ${{ needs.prepare.outputs.build_number }}
+
+      - name: Checkout msys32 tools from sibling repo
+        uses: actions/checkout@v4
+        with:
+          repository: ec-/msys32
+          path: msys
+
+      - name: Extract msys32.7z
+        run: |
+          7z x %GITHUB_WORKSPACE%/msys/msys32.7z -o%GITHUB_WORKSPACE%/msys
+        shell: cmd
+
+      - name: Prepend msys/bin to PATH
+        run: |
+             echo "PATH=$GITHUB_WORKSPACE/msys/mingw/bin;$GITHUB_WORKSPACE/msys/bin;$GITHUB_WORKSPACE/msys" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Build
+        shell: cmd
+        run: |
+          make ${{ matrix.rule }} ARCH=${{ matrix.arch }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
+          make clean ARCH=${{ matrix.arch }}
+          make ${{ matrix.rule }} ARCH=${{ matrix.arch }} DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-mingw-${{ matrix.arch }}
+          path: bin
+          if-no-files-found: error
+          retention-days: 5
+
+  windows-msvc:
+    if: needs.prepare.outputs.should_build == 'true'
+    needs: [prepare]
+    name: Release Windows-MSVC ${{ matrix.arch }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86, x64]
+        include:
+          - arch: arm64
+            platform: ARM64
+            suffix: .arm64
+            pkg_suffix: arm64
+
+          - arch: x86
+            platform: Win32
+            pkg_suffix: x86
+
+          - arch: x64
+            platform: x64
+            suffix: .x64
+            pkg_suffix: x86_64
+    steps:
+      - uses: microsoft/setup-msbuild@v2
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Stamp nightly build version
+        run: python scripts/nightly.py stamp-version --build-number ${{ needs.prepare.outputs.build_number }}
+
+      - name: Build
+        run: |
+          mkdir bin
+
+          msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
+          copy code\win32\msvc2017\output\fnquake3.ded.exe bin\fnquake3.ded${{ matrix.suffix }}.exe
+          msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
+
+          msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
+          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
+          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3${{ matrix.suffix }}.exe
+          msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
+          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
+
+          msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
+          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
+          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3-vulkan${{ matrix.suffix }}.exe
+          msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
+          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msvc-${{ matrix.pkg_suffix }}
+          path: bin
+          if-no-files-found: error
+          retention-days: 5
+
+  ubuntu-x86:
+    if: needs.prepare.outputs.should_build == 'true'
+    needs: [prepare]
+    name: Release Ubuntu ${{ matrix.arch }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x86_64]
+        include:
+          - arch: x86
+            rule: install
+            use_sdl: USE_SDL=0
+
+          - arch: x86_64
+            rule: install
+            use_sdl: USE_SDL=1
+    steps:
+      - name: Install tools
+        run: |
+          if [ ${{ matrix.arch }} == "x86" ]; then
+            sudo dpkg --add-architecture i386
+            sudo apt-get -qq update
+            sudo apt-get -y install gcc-multilib libcurl4-openssl-dev:i386 mesa-common-dev:i386 libxxf86dga-dev:i386 libxrandr-dev:i386 libxxf86vm-dev:i386 libasound-dev:i386
+          else
+            sudo apt-get -qq update
+            sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev libsdl3-dev
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Stamp nightly build version
+        run: python scripts/nightly.py stamp-version --build-number "${{ needs.prepare.outputs.build_number }}"
+
+      - name: Build
+        run: |
+          make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=gcc DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
+          make clean ARCH=${{ matrix.arch }}
+          make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=gcc DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: bin
+          if-no-files-found: error
+          retention-days: 5
+
+  ubuntu-arm64:
+    if: needs.prepare.outputs.should_build == 'true'
+    needs: [prepare]
+    name: Release Ubuntu arm64
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y make gcc g++
+          sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound-dev libsdl3-dev
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Stamp nightly build version
+        run: python scripts/nightly.py stamp-version --build-number "${{ needs.prepare.outputs.build_number }}"
+
+      - name: Build
+        run: |
+          make install -j$(nproc) ARCH=arm64 CC=gcc DESTDIR=bin USE_SDL=1 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
+          make clean ARCH=arm64
+          make install -j$(nproc) ARCH=arm64 CC=gcc DESTDIR=bin USE_SDL=1 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: bin
+          if-no-files-found: error
+          retention-days: 5
+
+  macos-x86:
+    if: needs.prepare.outputs.should_build == 'true'
+    needs: [prepare]
+    name: Release macOS ${{ matrix.arch }}
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - name: Install tools
+        run: brew install coreutils sdl3
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Stamp nightly build version
+        run: python3 scripts/nightly.py stamp-version --build-number "${{ needs.prepare.outputs.build_number }}"
+
+      - name: Build
+        run: |
+          make install -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=clang DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0 STRIP=echo
+          make clean ARCH=${{ matrix.arch }}
+          make install -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=clang DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl STRIP=echo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: bin
+          if-no-files-found: error
+          retention-days: 5
+
+  publish:
+    if: needs.prepare.outputs.should_build == 'true'
+    needs: [prepare, windows-msys32, windows-msvc, ubuntu-x86, ubuntu-arm64, macos-x86]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch tags
+        run: git fetch --force --tags origin
+
+      - name: Stamp nightly build version
+        run: python scripts/nightly.py stamp-version --build-number "${{ needs.prepare.outputs.build_number }}"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Resolve nightly version metadata
+        run: |
+          python scripts/version.py github-env --channel nightly --build-date "${{ needs.prepare.outputs.build_date }}" --commit "${{ needs.prepare.outputs.head_commit }}" >> "$GITHUB_ENV"
+
+      - name: Package nightly archives
+        run: |
+          python scripts/release.py --channel nightly --artifact-root artifacts --build-date "${{ needs.prepare.outputs.build_date }}" --commit "${{ needs.prepare.outputs.head_commit }}"
+
+      - name: Build nightly release notes
+        run: |
+          FROM_ARGS=()
+          if [ -n "${{ needs.prepare.outputs.previous_nightly_commit }}" ]; then
+            FROM_ARGS+=(--from-commit "${{ needs.prepare.outputs.previous_nightly_commit }}")
+          fi
+          python scripts/nightly.py release-notes \
+            --build-number "${{ needs.prepare.outputs.build_number }}" \
+            --build-date "${{ needs.prepare.outputs.build_date }}" \
+            --to-commit "${{ needs.prepare.outputs.head_commit }}" \
+            "${FROM_ARGS[@]}" \
+            --output .tmp/nightly-release-notes.md
+
+      - name: Recreate nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "${FNQ3_RELEASE_TAG}" --cleanup-tag --yes || true
+          git push origin ":refs/tags/${FNQ3_RELEASE_TAG}" || true
+          gh release create "${FNQ3_RELEASE_TAG}" \
+            .install/packages/*.zip \
+            .install/release-manifest.json \
+            .install/SHA256SUMS.txt \
+            --target "${{ needs.prepare.outputs.head_commit }}" \
+            --title "${FNQ3_RELEASE_TITLE}" \
+            --notes-file .tmp/nightly-release-notes.md \
+            --prerelease

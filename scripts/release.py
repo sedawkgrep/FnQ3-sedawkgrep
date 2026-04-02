@@ -110,6 +110,7 @@ def build_archives(args: argparse.Namespace) -> dict[str, object]:
     manifest = {
         "project": meta["project_name"],
         "channel": meta["channel"],
+        "base_version": meta["base_version"],
         "version": meta["version"],
         "version_label": meta["version_label"],
         "release_tag": meta["release_tag"],

@@ -45,7 +45,7 @@ That header feeds:
 Current policy:
 
 - Tagged releases use semantic version tags in the form `vX.Y.Z`.
-- Nightly builds keep the moving `nightly` tag and stamp archive filenames with date plus commit.
+- Nightly builds keep the moving `nightly` tag, derive an incrementing build revision from git history, and stamp archive filenames with build version, date, and commit.
 - The base version in `fnq3_version.h` should always represent the next intended stable release line.
 
 ## Docs Flow
@@ -69,10 +69,12 @@ That command rewrites:
 ## Release Packaging
 
 The packaging entry point is [`scripts/release.py`](/e:/Repositories/FnQuake3/scripts/release.py).
+Nightly CI orchestration lives in [`scripts/nightly.py`](/e:/Repositories/FnQuake3/scripts/nightly.py).
 
 Typical local usage:
 
 ```powershell
+python scripts/nightly.py summary
 python scripts/release.py --channel nightly --artifact-root <downloaded-artifacts-dir>
 python scripts/release.py --channel release --artifact-root <downloaded-artifacts-dir> --ref-name v0.1.0
 ```
@@ -87,13 +89,14 @@ The script:
 
 ## CI Notes
 
-[`.github/workflows/build.yml`](/e:/Repositories/FnQuake3/.github/workflows/build.yml) is the single workflow file today.
+[`.github/workflows/build.yml`](/e:/Repositories/FnQuake3/.github/workflows/build.yml) covers CI and tagged releases.
+[`.github/workflows/nightly.yml`](/e:/Repositories/FnQuake3/.github/workflows/nightly.yml) owns scheduled and manual nightly publishing.
 
 Expected behavior:
 
 - pull requests build only
-- `main` pushes can refresh the moving nightly package
-- scheduled nightly runs refresh the moving nightly package
+- `main` pushes validate the main branch without publishing a nightly release
+- scheduled nightly runs refresh the moving nightly package only when `main` has advanced since the previous nightly tag
 - published GitHub releases upload stable archives built from the tagged version
 
 ## Naming

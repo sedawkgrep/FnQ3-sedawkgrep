@@ -228,6 +228,10 @@
       <div class="grid">
         <article class="card">
           <strong>Base version</strong>
+          <p>${base_version}</p>
+        </article>
+        <article class="card">
+          <strong>Build version</strong>
           <p>${version}</p>
         </article>
         <article class="card">
@@ -254,7 +258,7 @@
       <h2>Release Channels</h2>
       <ul>
         <li>Stable releases use semantic tags such as <code>${release_tag_example}</code>.</li>
-        <li>Nightly packages follow current mainline work and include the build date plus commit in the archive filename.</li>
+        <li>Nightly packages follow current mainline work and include the incremented build version, build date, and commit in the archive filename.</li>
       </ul>
     </section>
 
@@ -268,7 +272,7 @@
         <li><a href="../docs/TECHNICAL.md">docs/TECHNICAL.md</a> covers repository layout, versioning, and release flow.</li>
         <li><a href="../LICENSE">LICENSE</a> and <a href="../COPYING.txt">COPYING.txt</a> ship with the package.</li>
       </ul>
-      <p class="footer">This page is generated from the repository templates so the packaged docs stay aligned with the tracked project version.</p>
+      <p class="footer">This page is generated from the repository templates so the packaged docs stay aligned with the current build metadata.</p>
     </section>
   </main>
 </body>

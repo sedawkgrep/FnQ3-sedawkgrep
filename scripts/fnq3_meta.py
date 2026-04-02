@@ -25,6 +25,17 @@ def _parse_define_value(raw_value: str):
     return value
 
 
+def compose_version_string(major: int, minor: int, patch: int, tweak: int = 0) -> str:
+    version = f"{major}.{minor}.{patch}"
+    if tweak:
+        version = f"{version}.{tweak}"
+    return version
+
+
+def compose_windows_version(major: int, minor: int, patch: int, tweak: int = 0) -> str:
+    return f"{major},{minor},{patch},{tweak}"
+
+
 def read_version_defines(path: Path = VERSION_HEADER) -> dict[str, object]:
     defines: dict[str, object] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -36,19 +47,23 @@ def read_version_defines(path: Path = VERSION_HEADER) -> dict[str, object]:
     return defines
 
 
-def base_metadata() -> dict[str, object]:
-    defines = read_version_defines()
-    version = str(defines["FNQ3_VERSION_STRING"])
+def base_metadata(path: Path = VERSION_HEADER) -> dict[str, object]:
+    defines = read_version_defines(path)
+    major = int(defines["FNQ3_VERSION_MAJOR"])
+    minor = int(defines["FNQ3_VERSION_MINOR"])
+    patch = int(defines["FNQ3_VERSION_PATCH"])
+    tweak = int(defines["FNQ3_VERSION_TWEAK"])
     return {
         "project_name": str(defines["FNQ3_PROJECT_NAME"]),
         "project_name_short": str(defines["FNQ3_PROJECT_NAME_SHORT"]),
         "display_name": str(defines["FNQ3_DISPLAY_NAME"]),
         "compatibility_target": str(defines["FNQ3_COMPATIBILITY_TARGET"]),
-        "version": version,
-        "version_major": int(defines["FNQ3_VERSION_MAJOR"]),
-        "version_minor": int(defines["FNQ3_VERSION_MINOR"]),
-        "version_patch": int(defines["FNQ3_VERSION_PATCH"]),
-        "version_tweak": int(defines["FNQ3_VERSION_TWEAK"]),
+        "base_version": compose_version_string(major, minor, patch),
+        "version": compose_version_string(major, minor, patch, tweak),
+        "version_major": major,
+        "version_minor": minor,
+        "version_patch": patch,
+        "version_tweak": tweak,
         "tag_prefix": str(defines["FNQ3_TAG_PREFIX"]),
         "artifact_prefix": str(defines["FNQ3_ARTIFACT_PREFIX"]),
         "nightly_tag": str(defines["FNQ3_NIGHTLY_TAG"]),
@@ -89,9 +104,9 @@ def channel_metadata(
         release_title = f"{meta['project_name']} {meta['version']}"
     else:
         release_tag = str(meta["nightly_tag"])
-        archive_prefix = f"{meta['artifact_prefix']}-nightly-{date_slug}-{short_commit}"
+        archive_prefix = f"{meta['artifact_prefix']}-nightly-{meta['version']}-{date_slug}-{short_commit}"
         version_label = f"{meta['version']}-nightly.{date_slug}+{short_commit}"
-        release_title = f"{meta['project_name']} Nightly {iso_date}"
+        release_title = f"{meta['project_name']} Nightly {iso_date} ({meta['version']})"
 
     meta.update(
         {

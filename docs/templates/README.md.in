@@ -44,7 +44,7 @@ ${project_name} is a modernized Quake III Arena engine project built around a si
 ## Release Channels
 
 - Tagged releases use semantic version tags such as `${release_tag_example}`.
-- Nightly packages follow current mainline work and include the build date plus commit in the archive name.
+- Nightly packages follow current mainline work and include the incremented build version, build date, and commit in the archive name.
 
 ## Documentation
 
@@ -61,4 +61,5 @@ ${project_name} is a modernized Quake III Arena engine project built around a si
 3. Enhanced modern platform support.
 4. Cross-platform support, with other platforms considered.
 
-Current tracked base version: `${version}`
+Current tracked base version: `${base_version}`
+Current build version: `${version}`

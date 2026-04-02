@@ -44,7 +44,7 @@ FnQuake3 is a modernized Quake III Arena engine project built around a simple go
 ## Release Channels
 
 - Tagged releases use semantic version tags such as `v0.1.0`.
-- Nightly packages follow current mainline work and include the build date plus commit in the archive name.
+- Nightly packages follow current mainline work and include the incremented build version, build date, and commit in the archive name.
 
 ## Documentation
 
@@ -62,3 +62,4 @@ FnQuake3 is a modernized Quake III Arena engine project built around a simple go
 4. Cross-platform support, with other platforms considered.
 
 Current tracked base version: `0.1.0`
+Current build version: `0.1.0`

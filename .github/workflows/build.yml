@@ -20,8 +20,6 @@ on:
       - '.gitignore'
       - 'docs/**'
       - '.install/**'
-  schedule:
-    - cron: '0 3 * * *'
   release:
     types: [published]
 
@@ -391,39 +389,6 @@ jobs:
         path: bin
         if-no-files-found: error
         retention-days: 5
-
-  publish-nightly:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    needs: [windows-msys32, windows-msvc, ubuntu-x86, ubuntu-arm64, macos-x86]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Resolve nightly version metadata
-        run: |
-          echo "FNQ3_BUILD_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
-          python scripts/version.py github-env --channel nightly --build-date "$(date -u +%F)" --commit "${GITHUB_SHA}" >> "$GITHUB_ENV"
-
-      - name: Package nightly archives
-        run: |
-          python scripts/release.py --channel nightly --artifact-root artifacts --build-date "${FNQ3_BUILD_DATE}" --commit "${GITHUB_SHA}"
-
-      - name: Publish nightly release
-        uses: czietz/action-automatic-releases@latest
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          automatic_release_tag: ${{ env.FNQ3_RELEASE_TAG }}
-          prerelease: true
-          title: ${{ env.FNQ3_RELEASE_TITLE }}
-          files: |
-            .install/packages/*.zip
-            .install/release-manifest.json
-            .install/SHA256SUMS.txt
 
   publish-release:
     if: ${{ github.event_name == 'release' }}

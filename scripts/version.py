@@ -42,6 +42,7 @@ def main() -> int:
     if args.command == "github-env":
         mapping = {
             "FNQ3_PROJECT_NAME": meta["project_name"],
+            "FNQ3_BASE_VERSION": meta["base_version"],
             "FNQ3_VERSION": meta["version"],
             "FNQ3_VERSION_LABEL": meta["version_label"],
             "FNQ3_RELEASE_TAG": meta["release_tag"],
