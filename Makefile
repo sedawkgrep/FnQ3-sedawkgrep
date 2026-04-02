@@ -280,8 +280,7 @@ ifeq ($(USE_SYSTEM_VORBIS),1)
 endif
 
 # extract version info
-VERSION=$(shell grep "^[[:space:]]*#define[[:space:]]\+FNQ3_VERSION_STRING[[:space:]]\+\"" $(VERSION_HEADER) | \
-  sed -e 's/.*"\([^"]*\)".*/\1/')
+VERSION=$(shell sed -n 's/^[[:space:]]*#define[[:space:]]*FNQ3_VERSION_STRING[[:space:]]*"\([^"]*\)".*/\1/p' $(VERSION_HEADER))
 
 # common qvm definition
 ifeq ($(ARCH),x86_64)

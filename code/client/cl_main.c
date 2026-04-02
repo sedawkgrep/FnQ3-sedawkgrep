@@ -47,6 +47,8 @@ cvar_t	*cl_menuAspect;
 cvar_t	*cl_cinematicAspect;
 cvar_t	*cl_hudAspect;
 cvar_t	*cl_hudDump;
+cvar_t	*cl_enemyHighlight;
+cvar_t	*cl_enemyHighlightOutlineScale;
 
 cvar_t	*cl_aviFrameRate;
 cvar_t	*cl_aviMotionJpeg;
@@ -3938,6 +3940,17 @@ void CL_Init( void ) {
 	cl_hudDump = Cvar_Get( "cl_hudDump", "0", CVAR_ARCHIVE );
 	Cvar_CheckRange( cl_hudDump, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( cl_hudDump, "Dump deduplicated cgame HUD input groups to fnq3-hud-dump.json in the active game directory." );
+	cl_enemyHighlight = Cvar_Get( "cl_enemyHighlight", "0", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_enemyHighlight, "0", "3", CV_INTEGER );
+	Cvar_SetDescription( cl_enemyHighlight,
+		"Enemy player highlight effect bitmask:\n"
+		" 0 - disabled\n"
+		" 1 - rimlight only\n"
+		" 2 - stencil border only\n"
+		" 3 - rimlight and stencil border" );
+	cl_enemyHighlightOutlineScale = Cvar_Get( "cl_enemyHighlightOutlineScale", "1.06", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_enemyHighlightOutlineScale, "1.001", "1.250", CV_FLOAT );
+	Cvar_SetDescription( cl_enemyHighlightOutlineScale, "Uniform scale applied to the enemy stencil border shell." );
 	CL_HudInit();
 
 	cl_aviFrameRate = Cvar_Get ("cl_aviFrameRate", "25", CVAR_ARCHIVE);

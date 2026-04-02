@@ -53,8 +53,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define T TEXT
 
-#define EDIT_COLOR		RGB(0x00,0x00,0x10)
-#define TEXT_COLOR		RGB(0x40,0xEE,0x20)
+#define EDIT_COLOR		RGB(0x18,0x00,0x00)
+#define TEXT_COLOR		RGB(0xE0,0x00,0x00)
 
 #define ERROR_BG_COLOR	RGB(0x90,0x80,0x80)
 
@@ -225,6 +225,15 @@ static LRESULT WINAPI ConWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			Cvar_Set( "viewlog", "0" );
 		}
 		return 0;
+
+	case WM_CTLCOLOREDIT:
+		if ( ( HWND ) lParam == s_wcd.hwndInputLine )
+		{
+			SetBkColor( ( HDC ) wParam, EDIT_COLOR );
+			SetTextColor( ( HDC ) wParam, TEXT_COLOR );
+			return ( LRESULT ) s_wcd.hbrEditBackground;
+		}
+		break;
 
 	case WM_CTLCOLORSTATIC:
 		if ( ( HWND ) lParam == s_wcd.hwndBuffer )

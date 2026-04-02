@@ -27,6 +27,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 extern	botlib_export_t	*botlib_export;
 
+#define CL_ENEMY_HIGHLIGHT_MAX_MODELS 1024
+#define CL_ENEMY_HIGHLIGHT_MAX_SKINS 1024
+
+static char cl_enemyHighlightModelNames[CL_ENEMY_HIGHLIGHT_MAX_MODELS][MAX_QPATH];
+static char cl_enemyHighlightSkinNames[CL_ENEMY_HIGHLIGHT_MAX_SKINS][MAX_QPATH];
+static qhandle_t cl_enemyHighlightRimShader;
+static qhandle_t cl_enemyHighlightOutlineShader;
+
 //extern qboolean loadCamera(const char *name);
 //extern void startCamera(int time);
 //extern qboolean getCameraInfo(int time, vec3_t *origin, vec3_t *angles);

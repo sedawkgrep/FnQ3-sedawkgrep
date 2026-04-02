@@ -417,6 +417,8 @@ extern	cvar_t	*cl_menuAspect;
 extern	cvar_t	*cl_cinematicAspect;
 extern	cvar_t	*cl_hudAspect;
 extern	cvar_t	*cl_hudDump;
+extern	cvar_t	*cl_enemyHighlight;
+extern	cvar_t	*cl_enemyHighlightOutlineScale;
 
 extern	cvar_t	*com_maxfps;
 
