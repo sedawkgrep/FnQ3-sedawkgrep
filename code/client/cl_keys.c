@@ -389,6 +389,10 @@ static void Console_Key( int key ) {
 		return;
 	}
 
+	if ( Con_InputKey( key ) ) {
+		return;
+	}
+
 	// enter finishes the line
 	if ( key == K_ENTER || key == K_KP_ENTER ) {
 		// if not in the game explicitly prepend a slash if needed
@@ -641,6 +645,9 @@ static void CL_KeyDownEvent( int key, unsigned time )
 
 	// distribute the key down event to the appropriate handler
 	if ( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) {
+		if ( Con_KeyEvent( key, qtrue ) ) {
+			return;
+		}
 		Console_Key( key );
 	} else if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
 		if ( uivm ) {
@@ -702,6 +709,10 @@ static void CL_KeyUpEvent( int key, unsigned time )
 		}
 	}
 
+	if ( Key_GetCatcher() & KEYCATCH_CONSOLE ) {
+		Con_KeyEvent( key, qfalse );
+	}
+
 	if ( Key_GetCatcher() & KEYCATCH_UI ) {
 		if ( uivm ) {
 			VM_Call( uivm, 2, UI_KEY_EVENT, key, qfalse );
@@ -747,7 +758,7 @@ void CL_CharEvent( int key )
 	// distribute the key down event to the appropriate handler
 	if ( Key_GetCatcher( ) & KEYCATCH_CONSOLE )
 	{
-		Field_CharEvent( &g_consoleField, key );
+		Con_CharEvent( key );
 	}
 	else if ( Key_GetCatcher( ) & KEYCATCH_UI )
 	{

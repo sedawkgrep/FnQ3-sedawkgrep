@@ -518,6 +518,9 @@ void	Cmd_CompleteWriteCfgName( const char *args, int argNum );
 int		Cmd_Argc( void );
 void	Cmd_Clear( void );
 const char	*Cmd_Argv( int arg );
+qboolean Cmd_ArgQuoted( int arg );
+int		Cmd_ArgOffset( int arg );
+int		Cmd_ArgIndexFromOffset( int offset );
 void	Cmd_ArgvBuffer( int arg, char *buffer, int bufferLength );
 char	*Cmd_ArgsFrom( int arg );
 void	Cmd_ArgsBuffer( char *buffer, int bufferLength );
@@ -903,8 +906,12 @@ typedef struct {
 	char	buffer[MAX_EDIT_LINE];
 } field_t;
 
+typedef qboolean (*fieldCompletionQueryCallback_t)( const char *match, void *context );
+
 void Field_Clear( field_t *edit );
 void Field_AutoComplete( field_t *edit );
+int Field_QueryCompletionMatches( const char *cmd, qboolean *appendSpace,
+	fieldCompletionQueryCallback_t callback, void *context );
 void Field_CompleteKeyname( void );
 void Field_CompleteKeyBind( int key );
 void Field_CompleteFilename( const char *dir, const char *ext, qboolean stripExt, int flags );
@@ -1273,6 +1280,7 @@ char	*Sys_ConsoleInput( void );
 void	NORETURN FORMAT_PRINTF(1, 2) QDECL Sys_Error( const char *error, ... );
 void	NORETURN Sys_Quit( void );
 char	*Sys_GetClipboardData( void );	// note that this isn't journaled...
+void	Sys_SetClipboardData( const char *text );
 void	Sys_SetClipboardBitmap( const byte *bitmap, int length );
 
 void	Sys_Print( const char *msg );

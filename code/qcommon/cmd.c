@@ -470,6 +470,8 @@ typedef struct cmd_function_s
 
 static	int			cmd_argc;
 static	char		*cmd_argv[MAX_STRING_TOKENS];		// points into cmd_tokenized
+static	int			cmd_argoffsets[MAX_STRING_TOKENS];
+static	qboolean	cmd_quoted[MAX_STRING_TOKENS];
 static	char		cmd_tokenized[BIG_INFO_STRING+MAX_STRING_TOKENS];	// will have 0 bytes inserted
 static	char		cmd_cmd[BIG_INFO_STRING]; // the original command we received (no token processing)
 
@@ -506,6 +508,55 @@ const char *Cmd_Argv( int arg ) {
 		return "";
 	}
 	return cmd_argv[arg];
+}
+
+
+/*
+============
+Cmd_ArgQuoted
+============
+*/
+qboolean Cmd_ArgQuoted( int arg ) {
+	if ( (unsigned)arg >= cmd_argc ) {
+		return qfalse;
+	}
+
+	return cmd_quoted[ arg ];
+}
+
+
+/*
+============
+Cmd_ArgOffset
+============
+*/
+int Cmd_ArgOffset( int arg ) {
+	if ( (unsigned)arg >= cmd_argc ) {
+		return 0;
+	}
+
+	return cmd_argoffsets[ arg ];
+}
+
+
+/*
+=====================
+Cmd_ArgIndexFromOffset
+=====================
+*/
+int Cmd_ArgIndexFromOffset( int offset ) {
+	int i;
+
+	for ( i = 0; i < cmd_argc; i++ ) {
+		const int start = cmd_argoffsets[ i ];
+		const int end = start + strlen( cmd_argv[ i ] );
+
+		if ( offset >= start && offset <= end ) {
+			return i;
+		}
+	}
+
+	return -1;
 }
 
 
@@ -612,6 +663,7 @@ will point into this temporary buffer.
 //#define TKN_DBG
 static void Cmd_TokenizeString2( const char *text_in, qboolean ignoreQuotes ) {
 	const char *text;
+	const char *textStart;
 	char *textOut;
 
 #ifdef TKN_DBG
@@ -630,6 +682,7 @@ static void Cmd_TokenizeString2( const char *text_in, qboolean ignoreQuotes ) {
 	Q_strncpyz( cmd_cmd, text_in, sizeof( cmd_cmd ) );
 
 	text = cmd_cmd; // read from safe-length buffer
+	textStart = text;
 	textOut = cmd_tokenized;
 
 	while ( 1 ) {
@@ -672,6 +725,8 @@ static void Cmd_TokenizeString2( const char *text_in, qboolean ignoreQuotes ) {
 		// NOTE TTimo this doesn't handle \" escaping
 		if ( !ignoreQuotes && *text == '"' ) {
 			cmd_argv[cmd_argc] = textOut;
+			cmd_argoffsets[ cmd_argc ] = (int)( text + 1 - textStart );
+			cmd_quoted[ cmd_argc ] = qtrue;
 			cmd_argc++;
 			text++;
 			while ( *text && *text != '"' ) {
@@ -687,6 +742,8 @@ static void Cmd_TokenizeString2( const char *text_in, qboolean ignoreQuotes ) {
 
 		// regular token
 		cmd_argv[cmd_argc] = textOut;
+		cmd_argoffsets[ cmd_argc ] = (int)( text - textStart );
+		cmd_quoted[ cmd_argc ] = qfalse;
 		cmd_argc++;
 
 		// skip until whitespace, quote, or command

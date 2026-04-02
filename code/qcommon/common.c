@@ -4500,6 +4500,10 @@ static char shortestMatch[MAX_TOKEN_CHARS];
 static int	matchCount;
 // field we are working on, passed to Field_AutoComplete(&g_consoleCommand for instance)
 static field_t *completionField;
+static qboolean completionQueryMode;
+static fieldCompletionQueryCallback_t completionQueryCallback;
+static void *completionQueryContext;
+static qboolean completionQueryAppendSpace;
 
 /*
 ===============
@@ -4512,6 +4516,13 @@ static void FindMatches( const char *s ) {
 	if ( Q_stricmpn( s, completionString, strlen( completionString ) ) ) {
 		return;
 	}
+
+	if ( completionQueryMode && completionQueryCallback ) {
+		if ( !completionQueryCallback( s, completionQueryContext ) ) {
+			completionQueryCallback = NULL;
+		}
+	}
+
 	matchCount++;
 	if ( matchCount == 1 ) {
 		Q_strncpyz( shortestMatch, s, sizeof( shortestMatch ) );
@@ -4604,6 +4615,11 @@ static qboolean Field_Complete( void )
 
 	if( matchCount == 0 )
 		return qtrue;
+
+	if ( completionQueryMode ) {
+		completionQueryAppendSpace = ( matchCount == 1 ) ? qtrue : qfalse;
+		return qtrue;
+	}
 
 	completionOffset = strlen( completionField->buffer ) - strlen( completionString );
 
@@ -4863,6 +4879,56 @@ void Field_AutoComplete( field_t *field )
 	completionField = field;
 
 	Field_CompleteCommand( completionField->buffer, qtrue, qtrue );
+}
+
+
+/*
+===========================
+Field_QueryCompletionMatches
+===========================
+*/
+int Field_QueryCompletionMatches( const char *cmd, qboolean *appendSpace,
+	fieldCompletionQueryCallback_t callback, void *context )
+{
+	field_t queryField;
+	field_t *savedField;
+	fieldCompletionQueryCallback_t savedCallback;
+	void *savedContext;
+	qboolean savedQueryMode;
+	qboolean savedAppendSpace;
+
+	Field_Clear( &queryField );
+	Q_strncpyz( queryField.buffer, cmd, sizeof( queryField.buffer ) );
+	queryField.cursor = strlen( queryField.buffer );
+	queryField.widthInChars = MAX_EDIT_LINE - 1;
+
+	savedField = completionField;
+	savedCallback = completionQueryCallback;
+	savedContext = completionQueryContext;
+	savedQueryMode = completionQueryMode;
+	savedAppendSpace = completionQueryAppendSpace;
+
+	completionField = &queryField;
+	completionQueryMode = qtrue;
+	completionQueryCallback = callback;
+	completionQueryContext = context;
+	completionQueryAppendSpace = qfalse;
+	matchCount = 0;
+	shortestMatch[ 0 ] = '\0';
+
+	Field_CompleteCommand( queryField.buffer, qtrue, qtrue );
+
+	if ( appendSpace ) {
+		*appendSpace = completionQueryAppendSpace;
+	}
+
+	completionField = savedField;
+	completionQueryCallback = savedCallback;
+	completionQueryContext = savedContext;
+	completionQueryMode = savedQueryMode;
+	completionQueryAppendSpace = savedAppendSpace;
+
+	return matchCount;
 }
 
 

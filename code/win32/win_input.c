@@ -1244,18 +1244,7 @@ void IN_Frame( void ) {
 		return;
 	}
 
-	if ( Key_GetCatcher() & KEYCATCH_CONSOLE ) {
-		// temporarily deactivate if not in the game and
-		// running on the desktop with multimonitor configuration
-		if ( !glw_state.cdsFullscreen || glw_state.monitorCount > 1 ) {
-			IN_DeactivateMouse();
-			//WIN_EnableAltTab();
-			//WIN_DisableHook();
-			return;
-		}
-	}
-
-	if ( !gw_active || gw_minimized || in_nograb->integer ) {
+	if ( !gw_active || gw_minimized || ( in_nograb->integer && !( Key_GetCatcher() & KEYCATCH_CONSOLE ) ) ) {
 		IN_DeactivateMouse();
 		return;
 	}

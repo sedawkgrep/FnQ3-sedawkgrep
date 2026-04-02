@@ -217,8 +217,8 @@
       <div class="eyebrow">${project_name_short} distribution notes</div>
       <h1>${project_name}</h1>
       <p class="subtitle">
-        ${display_name} is a modernized Quake III Arena engine build that keeps retail compatibility, demo compatibility,
-        speed, and cross-platform support as first-order constraints.
+        ${display_name} is a modernized Quake III Arena engine build that aims to feel at home with the original game
+        while being easier to run on current systems.
       </p>
       <div class="buttons">
         <a class="button button-primary" href="../README.md">Project README</a>
@@ -242,11 +242,11 @@
     </section>
 
     <section class="section">
-      <h2>What This Package Assumes</h2>
+      <h2>Before You Start</h2>
       <ol>
         <li>You already own the original Quake III Arena game data.</li>
-        <li>The engine binary should live beside the retail data files or a configured base path.</li>
-        <li>Retail assets should stay untouched; package only the engine-side additions here.</li>
+        <li>Place the engine binary beside the retail data files, or point it at an existing base path.</li>
+        <li>Keep the retail assets intact and treat this package as the engine-side layer on top.</li>
       </ol>
     </section>
 
@@ -254,19 +254,21 @@
       <h2>Release Channels</h2>
       <ul>
         <li>Stable releases use semantic tags such as <code>${release_tag_example}</code>.</li>
-        <li>Nightly packages keep a moving <code>${nightly_tag}</code> release tag and include the build date plus commit in the archive filename.</li>
+        <li>Nightly packages follow current mainline work and include the build date plus commit in the archive filename.</li>
       </ul>
     </section>
 
     <section class="section">
       <h2>Documentation</h2>
       <ul>
-        <li><a href="../README.md">README.md</a> keeps the user-facing overview concise.</li>
-        <li><a href="../BUILD.md">BUILD.md</a> covers platform-specific compile steps.</li>
+        <li><a href="../README.md">README.md</a> is the quickest overview of what FnQuake3 is and what it focuses on.</li>
+        <li><a href="../BUILD.md">BUILD.md</a> walks through platform-specific build steps.</li>
+        <li><a href="../docs/ASPECT_CORRECTION.md">docs/ASPECT_CORRECTION.md</a> explains the HUD, menu, and cinematic presentation options.</li>
+        <li><a href="../docs/CONSOLE.md">docs/CONSOLE.md</a> covers console scaling, interaction, completion, and appearance.</li>
         <li><a href="../docs/TECHNICAL.md">docs/TECHNICAL.md</a> covers repository layout, versioning, and release flow.</li>
         <li><a href="../LICENSE">LICENSE</a> and <a href="../COPYING.txt">COPYING.txt</a> ship with the package.</li>
       </ul>
-      <p class="footer">Generated from the repository templates so distribution docs stay aligned with the tracked project version.</p>
+      <p class="footer">This page is generated from the repository templates so the packaged docs stay aligned with the tracked project version.</p>
     </section>
   </main>
 </body>

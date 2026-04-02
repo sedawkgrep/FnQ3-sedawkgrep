@@ -12,38 +12,45 @@ Fappin' Quake III, shortened to FnQuake3 or FnQ3.
 
 </div>
 
-FnQuake3 is a modernized Quake III Arena engine project focused on retail compatibility, demo compatibility, speed, and broad platform coverage.
+FnQuake3 is a modernized Quake III Arena engine project built around a simple goal: keep retail Quake III Arena behavior and demos working, then make the engine cleaner, faster, and easier to use on modern systems.
 
 ## What Matters
 
-- Retail Quake III Arena compatibility is a hard requirement.
-- Demo playback compatibility is treated as a hard requirement.
-- Performance work should stay practical and measurable.
-- Windows, Linux, macOS, and ARM targets are first-class concerns.
+- Retail Quake III Arena compatibility comes first.
+- Demo playback should keep working, not become a casualty of cleanup.
+- Performance work should be practical, measurable, and worth keeping.
+- Windows, Linux, macOS, and ARM support all matter here.
 
 ## Features
 
-- Broad 4:3-aware aspect correction for HUDs, menus, UI model widgets, cinematics, and optional console font virtualization. See the embedded [Aspect Correction guide](docs/ASPECT_CORRECTION.md).
-- SDL3 backend support for video, audio, and input on modern platforms.
-- Compatibility-first engine modernization that keeps retail Quake III Arena assets, protocol behavior, and demos as first-class concerns.
-- Multiple renderer and platform targets aimed at practical performance across legacy and modern systems.
+- Flexible 4:3-aware aspect correction for HUDs, menus, UI model widgets, and cinematics, with sensible widescreen options when you want them. See the [Aspect Correction guide](docs/ASPECT_CORRECTION.md).
+- A much more capable console, including configurable scaling, smoother scrolling, mouse interaction, text selection, drag and drop, and live tab completion. See the [Console guide](docs/CONSOLE.md).
+- CPMA/CNQ3-style rainbow text color escapes, with live preview right in the console input line.
+- SDL3 support for video, audio, and input on modern platforms.
+- Compatibility-first engine work that keeps retail assets, protocol behavior, and demos at the center of the project.
+- Multiple renderer and platform targets aimed at practical performance across older and newer systems.
+
+## Credits
+
+- CPMA/CNQ3-style rainbow text color escape support is adapted from the CPMADevs CNQ3 project.
 
 ## Quick Start
 
-1. Build the engine for your platform or use a packaged build.
+1. Build the engine for your platform, or grab a packaged build if you already have one.
 2. Put the executable next to your Quake III Arena installation and data files.
-3. Keep your original retail game assets intact.
-4. Use [BUILD.md](BUILD.md) for platform-specific build instructions.
+3. Leave your original retail game assets alone.
+4. Use [BUILD.md](BUILD.md) if you need the platform-specific build steps.
 
 ## Release Channels
 
 - Tagged releases use semantic version tags such as `v0.1.0`.
-- Nightly packages track current mainline work and include the build date plus commit in the archive name.
+- Nightly packages follow current mainline work and include the build date plus commit in the archive name.
 
 ## Documentation
 
-- [Build Guide](BUILD.md) for compiling on supported platforms.
-- [Aspect Correction Guide](docs/ASPECT_CORRECTION.md) for HUD, menu, cinematic, and console scaling behavior.
+- [Build Guide](BUILD.md) if you want to compile FnQuake3 yourself.
+- [Aspect Correction Guide](docs/ASPECT_CORRECTION.md) for HUD, menu, and cinematic presentation options.
+- [Console Guide](docs/CONSOLE.md) for console scaling, interaction, completion, and appearance.
 - [Technical Notes](docs/TECHNICAL.md) for maintainers, release flow, and repo conventions.
 - [Agent Guide](AGENTS.md) for automation rules and local repository references.
 

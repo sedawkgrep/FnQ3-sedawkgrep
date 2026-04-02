@@ -336,6 +336,7 @@ typedef struct {
 	qhandle_t	charSetShader;
 	qhandle_t	whiteShader;
 	qhandle_t	consoleShader;
+	qhandle_t	cursorShader;
 
 	int			lastVidRestart;
 	int			soundMuted;
@@ -514,6 +515,10 @@ void Con_ToggleConsole_f( void );
 void Con_ClearNotify( void );
 void Con_RunConsole( void );
 void Con_DrawConsole( void );
+void Con_MouseEvent( int dx, int dy );
+qboolean Con_KeyEvent( int key, qboolean down );
+qboolean Con_InputKey( int key );
+void Con_CharEvent( int key );
 void Con_PageUp( int lines );
 void Con_PageDown( int lines );
 void Con_Top( void );

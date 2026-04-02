@@ -841,6 +841,19 @@ static void CL_CompleteDemoName(const char *args, int argNum )
 
 /*
 ====================
+CL_CompleteDownloadMap
+====================
+*/
+static void CL_CompleteDownloadMap( const char *args, int argNum )
+{
+	if ( argNum == 2 ) {
+		Field_CompleteFilename( "maps", "bsp", qtrue, FS_MATCH_ANY | FS_MATCH_STICK );
+	}
+}
+
+
+/*
+====================
 CL_PlayDemo_f
 
 demo <demoname>
@@ -3210,6 +3223,7 @@ static void CL_InitRenderer( void ) {
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
 	cls.whiteShader = re.RegisterShader( "white" );
 	cls.consoleShader = re.RegisterShader( "console" );
+	cls.cursorShader = re.RegisterShaderNoMip( "menu/art/3_cursor2" );
 
 	Con_CheckResize();
 
@@ -4062,6 +4076,7 @@ void CL_Init( void ) {
 #ifdef USE_CURL
 	Cmd_AddCommand( "download", CL_Download_f );
 	Cmd_AddCommand( "dlmap", CL_Download_f );
+	Cmd_SetCommandCompletionFunc( "dlmap", CL_CompleteDownloadMap );
 #endif
 	Cmd_AddCommand( "modelist", CL_ModeList_f );
 

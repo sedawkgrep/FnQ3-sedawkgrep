@@ -1041,6 +1041,42 @@ char *Sys_GetClipboardData( void ) {
 
 /*
 ================
+Sys_SetClipboardData
+================
+*/
+void Sys_SetClipboardData( const char *text )
+{
+	HGLOBAL hMem;
+	char *ptr;
+	size_t length;
+
+	if ( !g_wv.hWnd || !OpenClipboard( g_wv.hWnd ) )
+		return;
+
+	EmptyClipboard();
+
+	if ( !text ) {
+		text = "";
+	}
+
+	length = strlen( text ) + 1;
+	hMem = GlobalAlloc( GMEM_MOVEABLE | GMEM_DDESHARE, length );
+	if ( hMem != NULL ) {
+		ptr = (char *)GlobalLock( hMem );
+		if ( ptr != NULL ) {
+			memcpy( ptr, text, length );
+			GlobalUnlock( hMem );
+			SetClipboardData( CF_TEXT, hMem );
+		} else {
+			GlobalFree( hMem );
+		}
+	}
+	CloseClipboard();
+}
+
+
+/*
+================
 Sys_SetClipboardBitmap
 ================
 */

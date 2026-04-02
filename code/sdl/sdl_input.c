@@ -420,6 +420,9 @@ IN_ActivateMouse
 */
 static void IN_ActivateMouse( void )
 {
+	const qboolean consoleActive = ( Key_GetCatcher() & KEYCATCH_CONSOLE ) ? qtrue : qfalse;
+	const qboolean grabMouse = ( !in_nograb->integer || consoleActive ) ? qtrue : qfalse;
+
 	if ( !mouseAvailable )
 		return;
 
@@ -427,8 +430,8 @@ static void IN_ActivateMouse( void )
 	{
 		IN_GobbleMouseEvents();
 
-		SDL_SetWindowRelativeMouseMode( SDL_window, in_mouse->integer == 1 ? true : false );
-		SDL_SetWindowMouseGrab( SDL_window, true );
+		SDL_SetWindowRelativeMouseMode( SDL_window, ( in_mouse->integer == 1 && grabMouse ) ? true : false );
+		SDL_SetWindowMouseGrab( SDL_window, grabMouse ? true : false );
 
 		if ( glw_state.isFullscreen )
 			IN_ShowCursor( qfalse );
@@ -445,7 +448,7 @@ static void IN_ActivateMouse( void )
 	{
 		if ( in_nograb->modified || !mouseActive )
 		{
-			if ( in_nograb->integer ) {
+			if ( !grabMouse ) {
 				SDL_SetWindowRelativeMouseMode( SDL_window, false );
 				SDL_SetWindowMouseGrab( SDL_window, false );
 			} else {
@@ -1470,16 +1473,7 @@ void IN_Frame( void )
 	IN_JoyMove();
 #endif
 
-	if ( Key_GetCatcher() & KEYCATCH_CONSOLE ) {
-		// temporarily deactivate if not in the game and
-		// running on the desktop with multimonitor configuration
-		if ( !glw_state.isFullscreen || glw_state.monitorCount > 1 ) {
-			IN_DeactivateMouse();
-			return;
-		}
-	}
-
-	if ( !gw_active || !mouse_focus || in_nograb->integer ) {
+	if ( !gw_active || !mouse_focus || ( in_nograb->integer && !( Key_GetCatcher() & KEYCATCH_CONSOLE ) ) ) {
 		IN_DeactivateMouse();
 		return;
 	}
