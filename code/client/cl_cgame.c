@@ -381,6 +381,7 @@ void CL_ShutdownCGame( void ) {
 
 	Key_SetCatcher( Key_GetCatcher( ) & ~KEYCATCH_CGAME );
 	cls.cgameStarted = qfalse;
+	CL_HudResetCGame();
 
 	if ( !cgvm ) {
 		return;
@@ -600,9 +601,17 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_REGISTERSKIN:
 		return re.RegisterSkin( VMA(1) );
 	case CG_R_REGISTERSHADER:
-		return re.RegisterShader( VMA(1) );
+	{
+		qhandle_t shader = re.RegisterShader( VMA(1) );
+		CL_HudRegisterShaderName( shader, VMA(1) );
+		return shader;
+	}
 	case CG_R_REGISTERSHADERNOMIP:
-		return re.RegisterShaderNoMip( VMA(1) );
+	{
+		qhandle_t shader = re.RegisterShaderNoMip( VMA(1) );
+		CL_HudRegisterShaderName( shader, VMA(1) );
+		return shader;
+	}
 	case CG_R_REGISTERFONT:
 		re.RegisterFont( VMA(1), args[2], VMA(3));
 		return 0;
@@ -633,7 +642,7 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.SetColor( VMA(1) );
 		return 0;
 	case CG_R_DRAWSTRETCHPIC:
-		re.DrawStretchPic( VMF(1), VMF(2), VMF(3), VMF(4), VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
+		CL_HudDrawStretchPic( VMF(1), VMF(2), VMF(3), VMF(4), VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
 		return 0;
 	case CG_R_MODELBOUNDS:
 		re.ModelBounds( args[1], VMA(2), VMA(3) );
@@ -850,6 +859,7 @@ void CL_InitCGame( void ) {
 
 	// allow vertex lighting for in-game elements
 	re.VertexLighting( qtrue );
+	CL_HudResetCGame();
 
 	// load the dll or bytecode
 	interpret = Cvar_VariableIntegerValue( "vm_cgame" );
@@ -929,7 +939,9 @@ CL_CGameRendering
 =====================
 */
 void CL_CGameRendering( stereoFrame_t stereo ) {
+	CL_HudBeginFrame();
 	VM_Call( cgvm, 3, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
+	CL_HudEndFrame();
 #ifdef DEBUG
 	VM_Debug( 0 );
 #endif

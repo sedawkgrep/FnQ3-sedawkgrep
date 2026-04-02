@@ -412,6 +412,10 @@ extern	cvar_t	*cl_inGameVideo;
 extern	cvar_t	*cl_lanForcePackets;
 extern	cvar_t	*cl_autoRecordDemo;
 extern	cvar_t	*cl_drawRecording;
+extern	cvar_t	*cl_menuAspect;
+extern	cvar_t	*cl_cinematicAspect;
+extern	cvar_t	*cl_hudAspect;
+extern	cvar_t	*cl_hudDump;
 
 extern	cvar_t	*com_maxfps;
 
@@ -531,6 +535,7 @@ void	SCR_DebugGraph( float value );
 int		SCR_GetBigStringWidth( const char *str );	// returns in virtual 640x480 coordinates
 
 void	SCR_AdjustFrom640( float *x, float *y, float *w, float *h );
+void	SCR_AdjustFrom640Uniform( float *x, float *y, float *w, float *h );
 void	SCR_FillRect( float x, float y, float width, float height, 
 					 const float *color );
 void	SCR_DrawPic( float x, float y, float width, float height, qhandle_t hShader );
@@ -554,6 +559,7 @@ int CIN_PlayCinematic( const char *arg0, int xpos, int ypos, int width, int heig
 e_status CIN_StopCinematic(int handle);
 e_status CIN_RunCinematic (int handle);
 void CIN_DrawCinematic (int handle);
+void CIN_DrawCinematicUI( int handle );
 void CIN_SetExtents (int handle, int x, int y, int w, int h);
 void CIN_UploadCinematic(int handle);
 void CIN_CloseAllVideos(void);
@@ -566,6 +572,17 @@ void CL_ShutdownCGame( void );
 qboolean CL_GameCommand( void );
 void CL_CGameRendering( stereoFrame_t stereo );
 void CL_SetCGameTime( void );
+
+//
+// cl_hud.c
+//
+void CL_HudInit( void );
+void CL_HudShutdown( void );
+void CL_HudResetCGame( void );
+void CL_HudBeginFrame( void );
+void CL_HudEndFrame( void );
+void CL_HudRegisterShaderName( qhandle_t shader, const char *name );
+void CL_HudDrawStretchPic( float x, float y, float w, float h, float s1, float t1, float s2, float t2, qhandle_t shader );
 
 //
 // cl_ui.c

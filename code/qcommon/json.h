@@ -30,6 +30,12 @@ enum
 	JSONTYPE_ERROR   // out of data
 };
 
+#ifdef JSON_IMPLEMENTATION
+#define JSONDEF static
+#else
+#define JSONDEF
+#endif
+
 // --------------------------------------------------------------------------
 //   Array Functions
 // --------------------------------------------------------------------------
@@ -37,21 +43,21 @@ enum
 // Get pointer to first value in array
 // When given pointer to an array, returns pointer to the first
 // returns NULL if array is empty or not an array.
-const char *JSON_ArrayGetFirstValue(const char *json, const char *jsonEnd);
+JSONDEF const char *JSON_ArrayGetFirstValue(const char *json, const char *jsonEnd);
 
 // Get pointer to next value in array
 // When given pointer to a value, returns pointer to the next value
 // returns NULL when no next value.
-const char *JSON_ArrayGetNextValue(const char *json, const char *jsonEnd);
+JSONDEF const char *JSON_ArrayGetNextValue(const char *json, const char *jsonEnd);
 
 // Get pointers to values in an array
 // returns 0 if not an array, array is empty, or out of data
 // returns number of values in the array and copies into index if successful
-unsigned int JSON_ArrayGetIndex(const char *json, const char *jsonEnd, const char **indexes, unsigned int numIndexes);
+JSONDEF unsigned int JSON_ArrayGetIndex(const char *json, const char *jsonEnd, const char **indexes, unsigned int numIndexes);
 
 // Get pointer to indexed value from array
 // returns NULL if not an array, no index, or out of data
-const char *JSON_ArrayGetValue(const char *json, const char *jsonEnd, unsigned int index);
+JSONDEF const char *JSON_ArrayGetValue(const char *json, const char *jsonEnd, unsigned int index);
 
 // --------------------------------------------------------------------------
 //   Object Functions
@@ -59,7 +65,7 @@ const char *JSON_ArrayGetValue(const char *json, const char *jsonEnd, unsigned i
 
 // Get pointer to named value from object
 // returns NULL if not an object, name not found, or out of data
-const char *JSON_ObjectGetNamedValue(const char *json, const char *jsonEnd, const char *name);
+JSONDEF const char *JSON_ObjectGetNamedValue(const char *json, const char *jsonEnd, const char *name);
 
 // --------------------------------------------------------------------------
 //   Value Functions
@@ -67,21 +73,21 @@ const char *JSON_ObjectGetNamedValue(const char *json, const char *jsonEnd, cons
 
 // Get type of value
 // returns JSONTYPE_ERROR if out of data
-unsigned int JSON_ValueGetType(const char *json, const char *jsonEnd);
+JSONDEF unsigned int JSON_ValueGetType(const char *json, const char *jsonEnd);
 
 // Get value as string
 // returns 0 if out of data
 // returns length and copies into string if successful, including terminating nul.
 // string values are stripped of enclosing quotes but not escaped
-unsigned int JSON_ValueGetString(const char *json, const char *jsonEnd, char *outString, unsigned int stringLen);
+JSONDEF unsigned int JSON_ValueGetString(const char *json, const char *jsonEnd, char *outString, unsigned int stringLen);
 
 // Get value as appropriate type
 // returns 0 if value is false, value is null, or out of data
 // returns 1 if value is true
 // returns value otherwise
-double JSON_ValueGetDouble(const char *json, const char *jsonEnd);
-float JSON_ValueGetFloat(const char *json, const char *jsonEnd);
-int JSON_ValueGetInt(const char *json, const char *jsonEnd);
+JSONDEF double JSON_ValueGetDouble(const char *json, const char *jsonEnd);
+JSONDEF float JSON_ValueGetFloat(const char *json, const char *jsonEnd);
+JSONDEF int JSON_ValueGetInt(const char *json, const char *jsonEnd);
 
 #endif
 
@@ -167,7 +173,7 @@ static unsigned int JSON_NoParse(const char *json, const char *jsonEnd)
 //   Array Functions
 // --------------------------------------------------------------------------
 
-const char *JSON_ArrayGetFirstValue(const char *json, const char *jsonEnd)
+JSONDEF const char *JSON_ArrayGetFirstValue(const char *json, const char *jsonEnd)
 {
 	if (!json || json >= jsonEnd || !IS_STRUCT_OPEN(*json))
 		return NULL;
@@ -177,7 +183,7 @@ const char *JSON_ArrayGetFirstValue(const char *json, const char *jsonEnd)
 	return (json >= jsonEnd || IS_STRUCT_CLOSE(*json)) ? NULL : json;
 }
 
-const char *JSON_ArrayGetNextValue(const char *json, const char *jsonEnd)
+JSONDEF const char *JSON_ArrayGetNextValue(const char *json, const char *jsonEnd)
 {
 	if (!json || json >= jsonEnd || IS_STRUCT_CLOSE(*json))
 		return NULL;
@@ -187,7 +193,7 @@ const char *JSON_ArrayGetNextValue(const char *json, const char *jsonEnd)
 	return (json >= jsonEnd || IS_STRUCT_CLOSE(*json)) ? NULL : json;
 }
 
-unsigned int JSON_ArrayGetIndex(const char *json, const char *jsonEnd, const char **indexes, unsigned int numIndexes)
+JSONDEF unsigned int JSON_ArrayGetIndex(const char *json, const char *jsonEnd, const char **indexes, unsigned int numIndexes)
 {
 	unsigned int length = 0;
 
@@ -204,7 +210,7 @@ unsigned int JSON_ArrayGetIndex(const char *json, const char *jsonEnd, const cha
 	return length;
 }
 
-const char *JSON_ArrayGetValue(const char *json, const char *jsonEnd, unsigned int index)
+JSONDEF const char *JSON_ArrayGetValue(const char *json, const char *jsonEnd, unsigned int index)
 {
 	for (json = JSON_ArrayGetFirstValue(json, jsonEnd); json && index; json = JSON_ArrayGetNextValue(json, jsonEnd))
 		index--;
@@ -216,7 +222,7 @@ const char *JSON_ArrayGetValue(const char *json, const char *jsonEnd, unsigned i
 //   Object Functions
 // --------------------------------------------------------------------------
 
-const char *JSON_ObjectGetNamedValue(const char *json, const char *jsonEnd, const char *name)
+JSONDEF const char *JSON_ObjectGetNamedValue(const char *json, const char *jsonEnd, const char *name)
 {
 	unsigned int nameLen = strlen(name);
 
@@ -244,7 +250,7 @@ const char *JSON_ObjectGetNamedValue(const char *json, const char *jsonEnd, cons
 //   Value Functions
 // --------------------------------------------------------------------------
 
-unsigned int JSON_ValueGetType(const char *json, const char *jsonEnd)
+JSONDEF unsigned int JSON_ValueGetType(const char *json, const char *jsonEnd)
 {
 	if (!json || json >= jsonEnd)
 		return JSONTYPE_ERROR;
@@ -258,7 +264,7 @@ unsigned int JSON_ValueGetType(const char *json, const char *jsonEnd)
 	return JSONTYPE_VALUE;
 }
 
-unsigned int JSON_ValueGetString(const char *json, const char *jsonEnd, char *outString, unsigned int stringLen)
+JSONDEF unsigned int JSON_ValueGetString(const char *json, const char *jsonEnd, char *outString, unsigned int stringLen)
 {
 	const char *stringEnd, *stringStart;
 
@@ -295,7 +301,7 @@ unsigned int JSON_ValueGetString(const char *json, const char *jsonEnd, char *ou
 	return stringEnd - stringStart;
 }
 
-double JSON_ValueGetDouble(const char *json, const char *jsonEnd)
+JSONDEF double JSON_ValueGetDouble(const char *json, const char *jsonEnd)
 {
 	char cValue[256];
 	double dValue = 0.0;
@@ -312,7 +318,7 @@ double JSON_ValueGetDouble(const char *json, const char *jsonEnd)
 	return dValue;
 }
 
-float JSON_ValueGetFloat(const char *json, const char *jsonEnd)
+JSONDEF float JSON_ValueGetFloat(const char *json, const char *jsonEnd)
 {
 	char cValue[256];
 	float fValue = 0.0f;
@@ -329,7 +335,7 @@ float JSON_ValueGetFloat(const char *json, const char *jsonEnd)
 	return fValue;
 }
 
-int JSON_ValueGetInt(const char *json, const char *jsonEnd)
+JSONDEF int JSON_ValueGetInt(const char *json, const char *jsonEnd)
 {
 	char cValue[256];
 	int iValue = 0;
@@ -349,5 +355,6 @@ int JSON_ValueGetInt(const char *json, const char *jsonEnd)
 #undef IS_SEPARATOR
 #undef IS_STRUCT_OPEN
 #undef IS_STRUCT_CLOSE
+#undef JSONDEF
 
 #endif

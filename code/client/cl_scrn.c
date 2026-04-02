@@ -84,6 +84,42 @@ void SCR_AdjustFrom640( float *x, float *y, float *w, float *h ) {
 	}
 }
 
+
+/*
+================
+SCR_AdjustFrom640Uniform
+
+Adjusted for resolution using centered 4:3 virtual screen space
+================
+*/
+void SCR_AdjustFrom640Uniform( float *x, float *y, float *w, float *h ) {
+	if ( x ) {
+		*x = *x * cls.scale + cls.biasX;
+	}
+	if ( y ) {
+		*y = *y * cls.scale + cls.biasY;
+	}
+	if ( w ) {
+		*w *= cls.scale;
+	}
+	if ( h ) {
+		*h *= cls.scale;
+	}
+}
+
+
+static void SCR_DrawLegacyBorders( void ) {
+	if ( cls.biasX > 0.0f ) {
+		re.DrawStretchPic( 0, 0, cls.biasX, cls.glconfig.vidHeight, 0, 0, 0, 0, cls.whiteShader );
+		re.DrawStretchPic( cls.glconfig.vidWidth - cls.biasX, 0, cls.biasX, cls.glconfig.vidHeight, 0, 0, 0, 0, cls.whiteShader );
+	}
+
+	if ( cls.biasY > 0.0f ) {
+		re.DrawStretchPic( 0, 0, cls.glconfig.vidWidth, cls.biasY, 0, 0, 0, 0, cls.whiteShader );
+		re.DrawStretchPic( 0, cls.glconfig.vidHeight - cls.biasY, cls.glconfig.vidWidth, cls.biasY, 0, 0, 0, 0, cls.whiteShader );
+	}
+}
+
 /*
 ================
 SCR_FillRect
@@ -528,15 +564,10 @@ static void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 
 	// wide aspect ratio screens need to have the sides cleared
 	// unless they are displaying game renderings
-	if ( uiFullscreen || cls.state < CA_LOADING ) {
-		if ( cls.glconfig.vidWidth * 480 > cls.glconfig.vidHeight * 640 ) {
-			// draw vertical bars on sides for legacy mods
-			const int w = (cls.glconfig.vidWidth - ((cls.glconfig.vidHeight * 640) / 480)) /2;
-			re.SetColor( g_color_table[ ColorIndex( COLOR_BLACK ) ] );
-			re.DrawStretchPic( 0, 0, w, cls.glconfig.vidHeight, 0, 0, 0, 0, cls.whiteShader );
-			re.DrawStretchPic( cls.glconfig.vidWidth - w, 0, w, cls.glconfig.vidHeight, 0, 0, 0, 0, cls.whiteShader );
-			re.SetColor( NULL );
-		}
+	if ( uiFullscreen || cls.state < CA_LOADING || ( cl_cinematicAspect && cl_cinematicAspect->integer && cls.state == CA_CINEMATIC ) ) {
+		re.SetColor( g_color_table[ ColorIndex( COLOR_BLACK ) ] );
+		SCR_DrawLegacyBorders();
+		re.SetColor( NULL );
 	}
 
 	// if the menu is going to cover the entire screen, we

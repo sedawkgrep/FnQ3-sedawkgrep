@@ -1598,7 +1598,7 @@ static void CIN_ResampleCinematic( int handle, int *buf2 ) {
 CIN_DrawCinematic
 ==================
 */
-void CIN_DrawCinematic( int handle ) {
+static void CIN_DrawCinematicInternal( int handle, qboolean uniformAspect ) {
 	float	x, y, w, h;
 	byte	*buf;
 
@@ -1614,19 +1614,11 @@ void CIN_DrawCinematic( int handle ) {
 	h = cinTable[handle].height;
 	buf = cinTable[handle].buf;
 
-#if 0 // keep aspect ratio for cinematics
-	if ( cls.biasX || cls.biasY ) {
-		// clear side areas
-		re.SetColor( colorBlack );
-		re.DrawStretchPic( 0, 0, cls.glconfig.vidWidth, cls.glconfig.vidHeight, 0, 0, 1, 1, cls.whiteShader );
+	if ( uniformAspect ) {
+		SCR_AdjustFrom640Uniform( &x, &y, &w, &h );
+	} else {
+		SCR_AdjustFrom640( &x, &y, &w, &h );
 	}
-	x = x * cls.scale + cls.biasX;
-	y = y * cls.scale + cls.biasY;
-	w = w * cls.scale;
-	h = h * cls.scale;
-#else
-	SCR_AdjustFrom640( &x, &y, &w, &h );
-#endif
 
 	if (cinTable[handle].dirty && (cinTable[handle].CIN_WIDTH != cinTable[handle].drawX || cinTable[handle].CIN_HEIGHT != cinTable[handle].drawY)) {
 		int *buf2;
@@ -1643,6 +1635,16 @@ void CIN_DrawCinematic( int handle ) {
 
 	re.DrawStretchRaw( x, y, w, h, cinTable[handle].drawX, cinTable[handle].drawY, buf, handle, cinTable[handle].dirty);
 	cinTable[handle].dirty = qfalse;
+}
+
+
+void CIN_DrawCinematic( int handle ) {
+	CIN_DrawCinematicInternal( handle, qfalse );
+}
+
+
+void CIN_DrawCinematicUI( int handle ) {
+	CIN_DrawCinematicInternal( handle, cl_cinematicAspect && cl_cinematicAspect->integer );
 }
 
 
@@ -1678,7 +1680,7 @@ void CL_PlayCinematic_f( void ) {
 
 void SCR_DrawCinematic( void ) {
 	if (CL_handle >= 0 && CL_handle < MAX_VIDEO_HANDLES) {
-		CIN_DrawCinematic(CL_handle);
+		CIN_DrawCinematicUI( CL_handle );
 	}
 }
 

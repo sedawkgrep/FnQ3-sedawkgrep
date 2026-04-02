@@ -741,6 +741,55 @@ static int FloatAsInt( float f ) {
 }
 
 
+static void CL_UIAdjustStretchPic( float *x, float *y, float *w, float *h ) {
+	const float xscale = cls.glconfig.vidWidth / 640.0f;
+	const float yscale = cls.glconfig.vidHeight / 480.0f;
+
+	if ( !cl_menuAspect || !cl_menuAspect->integer || xscale <= 0.0f || yscale <= 0.0f ) {
+		return;
+	}
+
+	if ( x ) {
+		*x /= xscale;
+	}
+	if ( y ) {
+		*y /= yscale;
+	}
+	if ( w ) {
+		*w /= xscale;
+	}
+	if ( h ) {
+		*h /= yscale;
+	}
+
+	SCR_AdjustFrom640Uniform( x, y, w, h );
+}
+
+
+static void CL_UIAdjustRefdef( refdef_t *refdef ) {
+	float x;
+	float y;
+	float w;
+	float h;
+
+	if ( !refdef || !cl_menuAspect || !cl_menuAspect->integer ) {
+		return;
+	}
+
+	x = (float)refdef->x;
+	y = (float)refdef->y;
+	w = (float)refdef->width;
+	h = (float)refdef->height;
+
+	CL_UIAdjustStretchPic( &x, &y, &w, &h );
+
+	refdef->x = (int)( x + 0.5f );
+	refdef->y = (int)( y + 0.5f );
+	refdef->width = (int)( w + 0.5f );
+	refdef->height = (int)( h + 0.5f );
+}
+
+
 /*
 ====================
 VM_ArgPtr
@@ -906,17 +955,29 @@ static intptr_t CL_UISystemCalls( intptr_t *args ) {
 		re.AddLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
 		return 0;
 
-	case UI_R_RENDERSCENE:
-		re.RenderScene( VMA(1) );
+	case UI_R_RENDERSCENE: {
+		refdef_t refdef;
+
+		Com_Memcpy( &refdef, VMA(1), sizeof( refdef ) );
+		CL_UIAdjustRefdef( &refdef );
+		re.RenderScene( &refdef );
 		return 0;
+	}
 
 	case UI_R_SETCOLOR:
 		re.SetColor( VMA(1) );
 		return 0;
 
-	case UI_R_DRAWSTRETCHPIC:
-		re.DrawStretchPic( VMF(1), VMF(2), VMF(3), VMF(4), VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
+	case UI_R_DRAWSTRETCHPIC: {
+		float x = VMF(1);
+		float y = VMF(2);
+		float w = VMF(3);
+		float h = VMF(4);
+
+		CL_UIAdjustStretchPic( &x, &y, &w, &h );
+		re.DrawStretchPic( x, y, w, h, VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
 		return 0;
+	}
 
 	case UI_R_MODELBOUNDS:
 		re.ModelBounds( args[1], VMA(2), VMA(3) );
@@ -1149,7 +1210,7 @@ static intptr_t CL_UISystemCalls( intptr_t *args ) {
 		return CIN_RunCinematic(args[1]);
 
 	case UI_CIN_DRAWCINEMATIC:
-		CIN_DrawCinematic(args[1]);
+		CIN_DrawCinematicUI( args[1] );
 		return 0;
 
 	case UI_CIN_SETEXTENTS:

@@ -43,6 +43,10 @@ cvar_t	*cl_showTimeDelta;
 cvar_t	*cl_shownet;
 cvar_t	*cl_autoRecordDemo;
 cvar_t	*cl_drawRecording;
+cvar_t	*cl_menuAspect;
+cvar_t	*cl_cinematicAspect;
+cvar_t	*cl_hudAspect;
+cvar_t	*cl_hudDump;
 
 cvar_t	*cl_aviFrameRate;
 cvar_t	*cl_aviMotionJpeg;
@@ -3899,6 +3903,29 @@ void CL_Init( void ) {
 	Cvar_SetDescription( cl_autoRecordDemo, "Auto-record demos when starting or joining a game." );
 	cl_drawRecording = Cvar_Get("cl_drawRecording", "1", CVAR_ARCHIVE);
 	Cvar_SetDescription( cl_drawRecording, "Hide (0) or shorten (1) \"RECORDING\" HUD message when recording demo." );
+	cl_menuAspect = Cvar_Get( "cl_menuAspect", "0", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_menuAspect, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( cl_menuAspect,
+		"Menu aspect correction:\n"
+		" 0 - stretch menu widgets to the framebuffer\n"
+		" 1 - keep menu widgets, including 3D model viewports, in centered 4:3 space" );
+	cl_cinematicAspect = Cvar_Get( "cl_cinematicAspect", "1", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_cinematicAspect, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( cl_cinematicAspect,
+		"Cinematic aspect correction:\n"
+		" 0 - stretch UI and fullscreen cinematics to the framebuffer\n"
+		" 1 - keep UI and fullscreen cinematics in centered 4:3 space" );
+	cl_hudAspect = Cvar_Get( "cl_hudAspect", "0", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_hudAspect, "0", "2", CV_INTEGER );
+	Cvar_SetDescription( cl_hudAspect,
+		"HUD aspect correction mode:\n"
+		" 0 - stretch HUD to the framebuffer\n"
+		" 1 - keep HUD in centered 4:3 uniform space\n"
+		" 2 - use centered 4:3 uniform space plus fnquake3 HUD rules from fnq3-hud.json" );
+	cl_hudDump = Cvar_Get( "cl_hudDump", "0", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_hudDump, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( cl_hudDump, "Dump deduplicated cgame HUD input groups to fnq3-hud-dump.json in the active game directory." );
+	CL_HudInit();
 
 	cl_aviFrameRate = Cvar_Get ("cl_aviFrameRate", "25", CVAR_ARCHIVE);
 	Cvar_CheckRange( cl_aviFrameRate, "1", "1000", CV_INTEGER );
@@ -4074,6 +4101,7 @@ void CL_Shutdown( const char *finalmsg, qboolean quit ) {
 
 	noGameRestart = quit;
 	CL_Disconnect( qfalse );
+	CL_HudShutdown();
 
 	// clear and mute all sounds until next registration
 	S_DisableSounds();

@@ -7,6 +7,9 @@
     <ClCompile Include="..\..\client\cl_cgame.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\client\cl_hud.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\client\cl_cin.c">
       <Filter>Source Files</Filter>
     </ClCompile>
