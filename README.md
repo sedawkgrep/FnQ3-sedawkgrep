@@ -2,7 +2,7 @@
 
 # FnQuake3
 
-Fappin' Quake III, shortened to FnQuake3 or FnQ3.
+Fappin' Quake III, for a fappin' good time.
 
 <p>
   <a href="BUILD.md"><img alt="Build Guide" src="https://img.shields.io/badge/Build-Guide-1f2937?style=for-the-badge"></a>
