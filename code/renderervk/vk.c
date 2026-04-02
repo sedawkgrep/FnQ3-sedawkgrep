@@ -6418,6 +6418,36 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		depth_stencil_state.front.reference = 0;
 
 		depth_stencil_state.back = depth_stencil_state.front;
+	} else if (def->shadow_phase == SHADOW_OUTLINE_MASK) {
+		depth_stencil_state.front.failOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.passOp = VK_STENCIL_OP_REPLACE;
+		depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.compareOp = VK_COMPARE_OP_ALWAYS;
+		depth_stencil_state.front.compareMask = 255;
+		depth_stencil_state.front.writeMask = 255;
+		depth_stencil_state.front.reference = 1;
+
+		depth_stencil_state.back = depth_stencil_state.front;
+	} else if (def->shadow_phase == SHADOW_OUTLINE_SHELL) {
+		depth_stencil_state.front.failOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.passOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.compareOp = VK_COMPARE_OP_NOT_EQUAL;
+		depth_stencil_state.front.compareMask = 255;
+		depth_stencil_state.front.writeMask = 255;
+		depth_stencil_state.front.reference = 1;
+
+		depth_stencil_state.back = depth_stencil_state.front;
+	} else if (def->shadow_phase == SHADOW_OUTLINE_CLEAR) {
+		depth_stencil_state.front.failOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.passOp = VK_STENCIL_OP_ZERO;
+		depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.compareOp = VK_COMPARE_OP_ALWAYS;
+		depth_stencil_state.front.compareMask = 255;
+		depth_stencil_state.front.writeMask = 255;
+		depth_stencil_state.front.reference = 0;
+
+		depth_stencil_state.back = depth_stencil_state.front;
 	}
 
 	depth_stencil_state.minDepthBounds = 0.0f;
@@ -6426,7 +6456,8 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	Com_Memset(&attachment_blend_state, 0, sizeof(attachment_blend_state));
 	attachment_blend_state.blendEnable = (state_bits & (GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS)) ? VK_TRUE : VK_FALSE;
 
-	if (def->shadow_phase == SHADOW_EDGES || def->shader_type == TYPE_SIGNLE_TEXTURE_DF)
+	if ( def->shadow_phase == SHADOW_EDGES || def->shadow_phase == SHADOW_OUTLINE_MASK ||
+		def->shadow_phase == SHADOW_OUTLINE_CLEAR || def->shader_type == TYPE_SIGNLE_TEXTURE_DF )
 		attachment_blend_state.colorWriteMask = 0;
 	else
 		attachment_blend_state.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;

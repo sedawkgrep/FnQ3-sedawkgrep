@@ -29,11 +29,28 @@ extern	botlib_export_t	*botlib_export;
 
 #define CL_ENEMY_HIGHLIGHT_MAX_MODELS 1024
 #define CL_ENEMY_HIGHLIGHT_MAX_SKINS 1024
+#define CL_ENEMY_HIGHLIGHT_MAX_PENDING 4096
+#define CL_ENEMY_HIGHLIGHT_MATCH_RADIUS 64.0f
+
+typedef enum {
+	CL_ENEMY_HIGHLIGHT_COLOR_NONE,
+	CL_ENEMY_HIGHLIGHT_COLOR_RED,
+	CL_ENEMY_HIGHLIGHT_COLOR_BLUE,
+	CL_ENEMY_HIGHLIGHT_COLOR_FREE,
+	CL_ENEMY_HIGHLIGHT_COLOR_COUNT
+} clEnemyHighlightColor_t;
 
 static char cl_enemyHighlightModelNames[CL_ENEMY_HIGHLIGHT_MAX_MODELS][MAX_QPATH];
 static char cl_enemyHighlightSkinNames[CL_ENEMY_HIGHLIGHT_MAX_SKINS][MAX_QPATH];
 static qhandle_t cl_enemyHighlightRimShader;
 static qhandle_t cl_enemyHighlightOutlineShader;
+typedef struct {
+	refEntity_t ent;
+	qboolean intShaderTime;
+	clEnemyHighlightColor_t colorSlot;
+} clEnemyHighlightPending_t;
+static clEnemyHighlightPending_t cl_enemyHighlightPending[CL_ENEMY_HIGHLIGHT_MAX_PENDING];
+static int cl_enemyHighlightNumPending;
 
 //extern qboolean loadCamera(const char *name);
 //extern void startCamera(int time);
@@ -56,6 +73,414 @@ CL_GetGlconfig
 */
 static void CL_GetGlconfig( glconfig_t *glconfig ) {
 	*glconfig = cls.glconfig;
+}
+
+
+static void CL_ClearEnemyHighlightState( void ) {
+	Com_Memset( cl_enemyHighlightModelNames, 0, sizeof( cl_enemyHighlightModelNames ) );
+	Com_Memset( cl_enemyHighlightSkinNames, 0, sizeof( cl_enemyHighlightSkinNames ) );
+	cl_enemyHighlightRimShader = 0;
+	cl_enemyHighlightOutlineShader = 0;
+	cl_enemyHighlightNumPending = 0;
+}
+
+
+static void CL_RecordEnemyHighlightModel( qhandle_t handle, const char *name ) {
+	if ( handle <= 0 || handle >= CL_ENEMY_HIGHLIGHT_MAX_MODELS || !name ) {
+		return;
+	}
+
+	Q_strncpyz( cl_enemyHighlightModelNames[handle], name, sizeof( cl_enemyHighlightModelNames[handle] ) );
+}
+
+
+static void CL_RecordEnemyHighlightSkin( qhandle_t handle, const char *name ) {
+	if ( handle <= 0 || handle >= CL_ENEMY_HIGHLIGHT_MAX_SKINS || !name ) {
+		return;
+	}
+
+	Q_strncpyz( cl_enemyHighlightSkinNames[handle], name, sizeof( cl_enemyHighlightSkinNames[handle] ) );
+}
+
+
+static const char *CL_GetEnemyHighlightModelName( qhandle_t handle ) {
+	if ( handle <= 0 || handle >= CL_ENEMY_HIGHLIGHT_MAX_MODELS || !cl_enemyHighlightModelNames[handle][0] ) {
+		return NULL;
+	}
+
+	return cl_enemyHighlightModelNames[handle];
+}
+
+
+static const char *CL_GetEnemyHighlightSkinName( qhandle_t handle ) {
+	if ( handle <= 0 || handle >= CL_ENEMY_HIGHLIGHT_MAX_SKINS || !cl_enemyHighlightSkinNames[handle][0] ) {
+		return NULL;
+	}
+
+	return cl_enemyHighlightSkinNames[handle];
+}
+
+
+static qboolean CL_IsEnemyHighlightPlayerModel( const char *name ) {
+	const char *base;
+
+	if ( !name || Q_stricmpn( name, "models/players/", 15 ) ) {
+		return qfalse;
+	}
+
+	base = COM_SkipPath( (char *)name );
+
+	if ( !Q_stricmp( base, "lower.md3" ) || !Q_stricmp( base, "upper.md3" ) || !Q_stricmp( base, "head.md3" ) ) {
+		return qtrue;
+	}
+
+	if ( !Q_stricmp( base, "lower.iqm" ) || !Q_stricmp( base, "upper.iqm" ) || !Q_stricmp( base, "head.iqm" ) ) {
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+
+static qboolean CL_IsEnemyHighlightPlayerSkin( const char *name ) {
+	const char *base;
+
+	if ( !name || Q_stricmpn( name, "models/players/", 15 ) ) {
+		return qfalse;
+	}
+
+	base = COM_SkipPath( (char *)name );
+	return ( !Q_stricmpn( base, "lower_", 6 ) || !Q_stricmpn( base, "upper_", 6 ) || !Q_stricmpn( base, "head_", 5 ) );
+}
+
+
+static qboolean CL_IsEnemyHighlightRedSkin( const char *name ) {
+	return CL_IsEnemyHighlightPlayerSkin( name ) && strstr( name, "_red.skin" ) != NULL;
+}
+
+
+static qboolean CL_IsEnemyHighlightBlueSkin( const char *name ) {
+	return CL_IsEnemyHighlightPlayerSkin( name ) && strstr( name, "_blue.skin" ) != NULL;
+}
+
+
+static void CL_GetEnemyHighlightMatchOrigin( const refEntity_t *ent, vec3_t outOrigin ) {
+	if ( ( ent->renderfx & RF_LIGHTING_ORIGIN ) != 0 ) {
+		VectorCopy( ent->lightingOrigin, outOrigin );
+		return;
+	}
+
+	VectorCopy( ent->origin, outOrigin );
+}
+
+
+static const entityState_t *CL_FindEnemyHighlightPlayerState( const refEntity_t *ent ) {
+	const entityState_t *best = NULL;
+	vec3_t matchOrigin;
+	float bestDistSq = Square( CL_ENEMY_HIGHLIGHT_MATCH_RADIUS );
+	int i;
+
+	if ( !cl.snap.valid ) {
+		return NULL;
+	}
+
+	CL_GetEnemyHighlightMatchOrigin( ent, matchOrigin );
+
+	for ( i = 0; i < cl.snap.numEntities; i++ ) {
+		const entityState_t *state = &cl.parseEntities[ ( cl.snap.parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 ) ];
+		float distSq;
+
+		if ( state->eType != ET_PLAYER ) {
+			continue;
+		}
+
+		distSq = DistanceSquared( matchOrigin, state->origin );
+		if ( distSq > bestDistSq ) {
+			continue;
+		}
+
+		bestDistSq = distSq;
+		best = state;
+	}
+
+	return best;
+}
+
+
+static const cvar_t *CL_GetEnemyHighlightColorCvar( clEnemyHighlightColor_t colorSlot ) {
+	switch ( colorSlot ) {
+		case CL_ENEMY_HIGHLIGHT_COLOR_RED:
+			return cl_playerHighlightRedColor;
+		case CL_ENEMY_HIGHLIGHT_COLOR_BLUE:
+			return cl_playerHighlightBlueColor;
+		case CL_ENEMY_HIGHLIGHT_COLOR_FREE:
+			return cl_playerHighlightFreeColor;
+		default:
+			return NULL;
+	}
+}
+
+
+static const cvar_t *CL_GetEnemyHighlightOverrideColorCvar( clEnemyHighlightColor_t colorSlot ) {
+	int localTeam;
+
+	if ( colorSlot == CL_ENEMY_HIGHLIGHT_COLOR_FREE ) {
+		return ( cl_playerHighlightEnemyColor && cl_playerHighlightEnemyColor->string[0] ) ? cl_playerHighlightEnemyColor : NULL;
+	}
+
+	localTeam = cl.snap.ps.persistant[PERS_TEAM];
+	if ( localTeam == TEAM_RED ) {
+		if ( colorSlot == CL_ENEMY_HIGHLIGHT_COLOR_RED ) {
+			return ( cl_playerHighlightTeammateColor && cl_playerHighlightTeammateColor->string[0] ) ? cl_playerHighlightTeammateColor : NULL;
+		}
+
+		if ( colorSlot == CL_ENEMY_HIGHLIGHT_COLOR_BLUE ) {
+			return ( cl_playerHighlightEnemyColor && cl_playerHighlightEnemyColor->string[0] ) ? cl_playerHighlightEnemyColor : NULL;
+		}
+	}
+
+	if ( localTeam == TEAM_BLUE ) {
+		if ( colorSlot == CL_ENEMY_HIGHLIGHT_COLOR_BLUE ) {
+			return ( cl_playerHighlightTeammateColor && cl_playerHighlightTeammateColor->string[0] ) ? cl_playerHighlightTeammateColor : NULL;
+		}
+
+		if ( colorSlot == CL_ENEMY_HIGHLIGHT_COLOR_RED ) {
+			return ( cl_playerHighlightEnemyColor && cl_playerHighlightEnemyColor->string[0] ) ? cl_playerHighlightEnemyColor : NULL;
+		}
+	}
+
+	return NULL;
+}
+
+
+static void CL_ParseEnemyHighlightColorString( const char *string, const color4ub_t *defaultColor, color4ub_t *outColor ) {
+	char buffer[MAX_CVAR_VALUE_STRING];
+	char *parts[4];
+	int i;
+	int count;
+
+	*outColor = *defaultColor;
+
+	if ( !string || !string[0] ) {
+		return;
+	}
+
+	Q_strncpyz( buffer, string, sizeof( buffer ) );
+	count = Com_Split( buffer, parts, 4, ' ' );
+	if ( count < 3 ) {
+		return;
+	}
+
+	for ( i = 0; i < 3; i++ ) {
+		float value = Q_atof( parts[i] );
+		if ( value < 0.0f ) {
+			value = 0.0f;
+		} else if ( value > 255.0f ) {
+			value = 255.0f;
+		}
+
+		outColor->rgba[i] = (byte)( value + 0.5f );
+	}
+
+	if ( count >= 4 ) {
+		float value = Q_atof( parts[3] );
+		if ( value < 0.0f ) {
+			value = 0.0f;
+		} else if ( value > 255.0f ) {
+			value = 255.0f;
+		}
+
+		outColor->rgba[3] = (byte)( value + 0.5f );
+	}
+}
+
+
+static void CL_GetEnemyHighlightPassColor( clEnemyHighlightColor_t colorSlot, byte defaultAlpha, color4ub_t *outColor ) {
+	color4ub_t defaultColor;
+	const cvar_t *cvar;
+
+	switch ( colorSlot ) {
+		case CL_ENEMY_HIGHLIGHT_COLOR_RED:
+			defaultColor.rgba[0] = 208;
+			defaultColor.rgba[1] = 96;
+			defaultColor.rgba[2] = 96;
+			break;
+		case CL_ENEMY_HIGHLIGHT_COLOR_BLUE:
+			defaultColor.rgba[0] = 96;
+			defaultColor.rgba[1] = 144;
+			defaultColor.rgba[2] = 224;
+			break;
+		case CL_ENEMY_HIGHLIGHT_COLOR_FREE:
+			defaultColor.rgba[0] = 208;
+			defaultColor.rgba[1] = 96;
+			defaultColor.rgba[2] = 96;
+			break;
+		default:
+			defaultColor.rgba[0] = 0;
+			defaultColor.rgba[1] = 0;
+			defaultColor.rgba[2] = 0;
+			break;
+	}
+
+	defaultColor.rgba[3] = defaultAlpha;
+	cvar = CL_GetEnemyHighlightOverrideColorCvar( colorSlot );
+	if ( !cvar ) {
+		cvar = CL_GetEnemyHighlightColorCvar( colorSlot );
+	}
+	CL_ParseEnemyHighlightColorString( cvar ? cvar->string : NULL, &defaultColor, outColor );
+}
+
+
+static clEnemyHighlightColor_t CL_GetEnemyHighlightColorSlot( const refEntity_t *ent ) {
+	const entityState_t *state;
+	const char *info;
+	const char *modelName;
+	const char *skinName;
+	int gametype;
+	vec3_t delta;
+	vec3_t matchOrigin;
+
+	if ( !cl_playerHighlight || !cl_playerHighlight->integer ) {
+		return CL_ENEMY_HIGHLIGHT_COLOR_NONE;
+	}
+
+	if ( !cl.snap.valid ) {
+		return CL_ENEMY_HIGHLIGHT_COLOR_NONE;
+	}
+
+	if ( ent->reType != RT_MODEL || ent->customShader != 0 ||
+		( ent->renderfx & ( RF_THIRD_PERSON | RF_FIRST_PERSON | RF_DEPTHHACK | RF_CROSSHAIR ) ) != 0 ) {
+		return CL_ENEMY_HIGHLIGHT_COLOR_NONE;
+	}
+
+	modelName = CL_GetEnemyHighlightModelName( ent->hModel );
+	skinName = CL_GetEnemyHighlightSkinName( ent->customSkin );
+
+	if ( !CL_IsEnemyHighlightPlayerModel( modelName ) && !CL_IsEnemyHighlightPlayerSkin( skinName ) ) {
+		return CL_ENEMY_HIGHLIGHT_COLOR_NONE;
+	}
+
+	state = CL_FindEnemyHighlightPlayerState( ent );
+	if ( state ) {
+		if ( state->clientNum == cl.snap.ps.clientNum || ( state->eFlags & EF_DEAD ) != 0 ) {
+			return CL_ENEMY_HIGHLIGHT_COLOR_NONE;
+		}
+	} else {
+		/*
+		Fallback when the current snapshot lookup does not find a stable player
+		match. Prefer lightingOrigin so multipart player models compare against
+		the shared player origin instead of head/tag attachment points.
+		*/
+		CL_GetEnemyHighlightMatchOrigin( ent, matchOrigin );
+		VectorSubtract( matchOrigin, cl.snap.ps.origin, delta );
+		if ( DotProduct( delta, delta ) <= ( 24.0f * 24.0f ) ) {
+			return CL_ENEMY_HIGHLIGHT_COLOR_NONE;
+		}
+	}
+
+	info = cl.gameState.stringData + cl.gameState.stringOffsets[CS_SERVERINFO];
+	gametype = atoi( Info_ValueForKey( info, "g_gametype" ) );
+
+	if ( gametype >= GT_TEAM ) {
+		if ( CL_IsEnemyHighlightRedSkin( skinName ) ) {
+			return CL_ENEMY_HIGHLIGHT_COLOR_RED;
+		}
+
+		if ( CL_IsEnemyHighlightBlueSkin( skinName ) ) {
+			return CL_ENEMY_HIGHLIGHT_COLOR_BLUE;
+		}
+
+		return CL_ENEMY_HIGHLIGHT_COLOR_NONE;
+	}
+
+	return CL_ENEMY_HIGHLIGHT_COLOR_FREE;
+}
+
+
+static void CL_QueueEnemyHighlightRefEntity( const refEntity_t *ent, qboolean intShaderTime, clEnemyHighlightColor_t colorSlot ) {
+	if ( cl_enemyHighlightNumPending >= CL_ENEMY_HIGHLIGHT_MAX_PENDING ) {
+		return;
+	}
+
+	cl_enemyHighlightPending[cl_enemyHighlightNumPending].ent = *ent;
+	cl_enemyHighlightPending[cl_enemyHighlightNumPending].intShaderTime = intShaderTime;
+	cl_enemyHighlightPending[cl_enemyHighlightNumPending].colorSlot = colorSlot;
+	cl_enemyHighlightNumPending++;
+}
+
+
+static void CL_EnsureEnemyHighlightShaders( void ) {
+	if ( !cl_enemyHighlightRimShader ) {
+		cl_enemyHighlightRimShader = re.RegisterShader( "<fnq3_enemy_rim>" );
+	}
+
+	if ( !cl_enemyHighlightOutlineShader ) {
+		cl_enemyHighlightOutlineShader = re.RegisterShader( "<fnq3_enemy_outline>" );
+	}
+}
+
+
+static void CL_AddEnemyHighlightRefEntity( const refEntity_t *ent, qboolean intShaderTime ) {
+	clEnemyHighlightColor_t colorSlot;
+
+	re.AddRefEntityToScene( ent, intShaderTime );
+
+	colorSlot = CL_GetEnemyHighlightColorSlot( ent );
+	if ( colorSlot == CL_ENEMY_HIGHLIGHT_COLOR_NONE ) {
+		return;
+	}
+
+	CL_QueueEnemyHighlightRefEntity( ent, intShaderTime, colorSlot );
+}
+
+
+static void CL_FlushEnemyHighlightRefEntities( const refdef_t *fd ) {
+	color4ub_t rimColors[CL_ENEMY_HIGHLIGHT_COLOR_COUNT];
+	color4ub_t outlineColors[CL_ENEMY_HIGHLIGHT_COLOR_COUNT];
+	int i;
+
+	if ( cl_enemyHighlightNumPending <= 0 ) {
+		return;
+	}
+
+	if ( !cl_playerHighlight || !cl_playerHighlight->integer || !fd || ( fd->rdflags & RDF_NOWORLDMODEL ) != 0 ) {
+		cl_enemyHighlightNumPending = 0;
+		return;
+	}
+
+	CL_EnsureEnemyHighlightShaders();
+	for ( i = CL_ENEMY_HIGHLIGHT_COLOR_RED; i < CL_ENEMY_HIGHLIGHT_COLOR_COUNT; i++ ) {
+		CL_GetEnemyHighlightPassColor( (clEnemyHighlightColor_t)i, 112, &rimColors[i] );
+		CL_GetEnemyHighlightPassColor( (clEnemyHighlightColor_t)i, 208, &outlineColors[i] );
+	}
+
+	for ( i = 0; i < cl_enemyHighlightNumPending; i++ ) {
+		const clEnemyHighlightPending_t *pending = &cl_enemyHighlightPending[i];
+		const color4ub_t *rimColor = &rimColors[pending->colorSlot];
+		const color4ub_t *outlineColor = &outlineColors[pending->colorSlot];
+		refEntity_t highlight = pending->ent;
+
+		if ( ( cl_playerHighlight->integer & 1 ) && cl_enemyHighlightRimShader ) {
+			highlight.customShader = cl_enemyHighlightRimShader;
+			highlight.renderfx |= RF_NOSHADOW;
+			highlight.shader = *rimColor;
+			highlight.shaderTexCoord[0] = 1.03f;
+			highlight.shaderTexCoord[1] = 0.0f;
+			re.AddRefEntityToScene( &highlight, pending->intShaderTime );
+		}
+
+		if ( ( cl_playerHighlight->integer & 2 ) && cl_enemyHighlightOutlineShader && cls.glconfig.stencilBits > 0 ) {
+			highlight = pending->ent;
+			highlight.customShader = cl_enemyHighlightOutlineShader;
+			highlight.renderfx |= RF_NOSHADOW;
+			highlight.shader = *outlineColor;
+			highlight.shaderTexCoord[0] = cl_playerHighlightOutlineScale ? cl_playerHighlightOutlineScale->value : 1.01f;
+			highlight.shaderTexCoord[1] = 0.0f;
+			re.AddRefEntityToScene( &highlight, pending->intShaderTime );
+		}
+	}
+
+	cl_enemyHighlightNumPending = 0;
 }
 
 
@@ -390,6 +815,7 @@ void CL_ShutdownCGame( void ) {
 	Key_SetCatcher( Key_GetCatcher( ) & ~KEYCATCH_CGAME );
 	cls.cgameStarted = qfalse;
 	CL_HudResetCGame();
+	CL_ClearEnemyHighlightState();
 
 	if ( !cgvm ) {
 		return;
@@ -605,9 +1031,17 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.LoadWorld( VMA(1) );
 		return 0;
 	case CG_R_REGISTERMODEL:
-		return re.RegisterModel( VMA(1) );
+	{
+		qhandle_t model = re.RegisterModel( VMA(1) );
+		CL_RecordEnemyHighlightModel( model, VMA(1) );
+		return model;
+	}
 	case CG_R_REGISTERSKIN:
-		return re.RegisterSkin( VMA(1) );
+	{
+		qhandle_t skin = re.RegisterSkin( VMA(1) );
+		CL_RecordEnemyHighlightSkin( skin, VMA(1) );
+		return skin;
+	}
 	case CG_R_REGISTERSHADER:
 	{
 		qhandle_t shader = re.RegisterShader( VMA(1) );
@@ -624,10 +1058,11 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.RegisterFont( VMA(1), args[2], VMA(3));
 		return 0;
 	case CG_R_CLEARSCENE:
+		cl_enemyHighlightNumPending = 0;
 		re.ClearScene();
 		return 0;
 	case CG_R_ADDREFENTITYTOSCENE:
-		re.AddRefEntityToScene( VMA(1), qfalse );
+		CL_AddEnemyHighlightRefEntity( VMA(1), qfalse );
 		return 0;
 	case CG_R_ADDPOLYTOSCENE:
 		re.AddPolyToScene( args[1], args[2], VMA(3), 1 );
@@ -644,6 +1079,7 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.AddAdditiveLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
 		return 0;
 	case CG_R_RENDERSCENE:
+		CL_FlushEnemyHighlightRefEntities( VMA(1) );
 		re.RenderScene( VMA(1) );
 		return 0;
 	case CG_R_SETCOLOR:
@@ -787,7 +1223,7 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 
 	// engine extensions
 	case CG_R_ADDREFENTITYTOSCENE2:
-		re.AddRefEntityToScene( VMA(1), qtrue );
+		CL_AddEnemyHighlightRefEntity( VMA(1), qtrue );
 		return 0;
 
 	case CG_R_ADDLINEARLIGHTTOSCENE:
@@ -854,6 +1290,7 @@ void CL_InitCGame( void ) {
 	vmInterpret_t		interpret;
 
 	Cbuf_NestedReset();
+	CL_ClearEnemyHighlightState();
 
 	t1 = Sys_Milliseconds();
 

@@ -1429,6 +1429,16 @@ void RB_EndSurface( void ) {
 		return;
 	}
 
+	if ( tess.shader == tr.enemyRimShader ) {
+		RB_EnemyRimTessEnd();
+		return;
+	}
+
+	if ( tess.shader == tr.enemyOutlineShader ) {
+		RB_EnemyOutlineTessEnd();
+		return;
+	}
+
 	// for debugging of sort order issues, stop rendering after a given sort value
 	if ( r_debugSort->integer && r_debugSort->integer < tess.shader->sort && !backEnd.doneSurfaces ) {
 #ifdef USE_VBO

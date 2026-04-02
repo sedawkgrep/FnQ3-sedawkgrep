@@ -46,6 +46,196 @@ static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
 //static	int			facing[SHADER_MAX_INDEXES/3];
 //static	vec3_t		shadowXyz[SHADER_MAX_VERTEXES];
 
+
+static float R_EnemyHighlightScale( float scale, float fallbackScale ) {
+	if ( scale <= 1.0f ) {
+		scale = fallbackScale;
+	}
+
+	if ( scale < 1.001f ) {
+		scale = 1.001f;
+	} else if ( scale > 1.25f ) {
+		scale = 1.25f;
+	}
+
+	return scale;
+}
+
+
+static float R_EnemyHighlightOffset( float scale, float fallbackScale ) {
+	scale = R_EnemyHighlightScale( scale, fallbackScale );
+
+	/*
+	Scaling around the entity origin drifts badly on segmented player models
+	because the MD3 pivots are not centered on the rendered surface. Expand
+	along the tessellated normals instead and derive the shell width from the
+	existing scale factor.
+	*/
+	return ( scale - 1.0f ) * 32.0f;
+}
+
+
+static float R_EnemyHighlightRimFactor( const vec4_t position, const vec3_t normal ) {
+	vec3_t viewer;
+	float facingDot;
+	float rim;
+
+	VectorSubtract( backEnd.or.viewOrigin, position, viewer );
+	if ( VectorNormalize( viewer ) <= 0.0f ) {
+		return 0.0f;
+	}
+
+	facingDot = DotProduct( normal, viewer );
+	if ( facingDot < 0.0f ) {
+		facingDot = -facingDot;
+	}
+
+	rim = 1.0f - facingDot;
+	rim = ( rim - 0.10f ) * ( 1.0f / 0.90f );
+
+	if ( rim <= 0.0f ) {
+		return 0.0f;
+	}
+
+	if ( rim >= 1.0f ) {
+		return 1.0f;
+	}
+
+	return rim * rim;
+}
+
+
+static void R_EnemyHighlightExpand( vec4_t *originalXYZ, float offset ) {
+	int i;
+	vec3_t normal;
+
+	for ( i = 0; i < tess.numVertexes; i++ ) {
+		Vector4Copy( tess.xyz[i], originalXYZ[i] );
+		R_VaoUnpackNormal( normal, tess.normal[i] );
+		VectorNormalizeFast( normal );
+		VectorMA( originalXYZ[i], offset, normal, tess.xyz[i] );
+	}
+}
+
+
+static void R_EnemyHighlightRestore( const vec4_t *originalXYZ ) {
+	Com_Memcpy( tess.xyz, originalXYZ, tess.numVertexes * sizeof( tess.xyz[0] ) );
+}
+
+
+static void R_EnemyHighlightBindTextureColorShader( const color4ub_t *color ) {
+	shaderProgram_t *sp = &tr.textureColorShader;
+	vec4_t shaderColor;
+
+	GL_BindToTMU( tr.whiteImage, TB_COLORMAP );
+	GLSL_BindProgram( sp );
+	GLSL_SetUniformMat4( sp, UNIFORM_MODELVIEWPROJECTIONMATRIX, glState.modelviewProjection );
+	VectorSet4( shaderColor,
+		color->rgba[0] / 255.0f,
+		color->rgba[1] / 255.0f,
+		color->rgba[2] / 255.0f,
+		color->rgba[3] / 255.0f );
+	GLSL_SetUniformVec4( sp, UNIFORM_COLOR, shaderColor );
+	GLSL_SetUniformInt( sp, UNIFORM_ALPHATEST, 0 );
+}
+
+
+static void R_EnemyHighlightBindRimShader( void ) {
+	shaderProgram_t *sp = &tr.genericShader[0];
+
+	GL_BindToTMU( tr.whiteImage, TB_DIFFUSEMAP );
+	GLSL_BindProgram( sp );
+	GLSL_SetUniformMat4( sp, UNIFORM_MODELVIEWPROJECTIONMATRIX, glState.modelviewProjection );
+	GLSL_SetUniformVec4( sp, UNIFORM_BASECOLOR, colorBlack );
+	GLSL_SetUniformVec4( sp, UNIFORM_VERTCOLOR, colorWhite );
+	GLSL_SetUniformInt( sp, UNIFORM_ALPHATEST, 0 );
+}
+
+
+static void R_EnemyHighlightColor( const color4ub_t *color ) {
+	int i;
+	vec3_t normal;
+
+	for ( i = 0; i < tess.numVertexes; i++ ) {
+		float rim;
+
+		R_VaoUnpackNormal( normal, tess.normal[i] );
+		VectorNormalizeFast( normal );
+
+		rim = R_EnemyHighlightRimFactor( tess.xyz[i], normal );
+
+		tess.color[i][0] = color->rgba[0] * 257;
+		tess.color[i][1] = color->rgba[1] * 257;
+		tess.color[i][2] = color->rgba[2] * 257;
+		tess.color[i][3] = (uint16_t)( color->rgba[3] * rim * 257.0f + 0.5f );
+	}
+}
+
+
+void RB_EnemyRimTessEnd( void ) {
+	if ( !backEnd.currentEntity ) {
+		return;
+	}
+
+	R_EnemyHighlightColor( &backEnd.currentEntity->e.shader );
+	RB_UpdateTessVao( ATTR_POSITION | ATTR_TEXCOORD | ATTR_COLOR );
+
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE );
+	R_EnemyHighlightBindRimShader();
+	R_DrawElements( tess.numIndexes, tess.firstIndex );
+}
+
+
+void RB_EnemyOutlineTessEnd( void ) {
+	GLboolean rgba[4];
+	vec4_t originalXYZ[SHADER_MAX_VERTEXES];
+	static const color4ub_t clearColor = { { 0, 0, 0, 0 } };
+	float offset;
+
+	if ( !backEnd.currentEntity || glConfig.stencilBits <= 0 || r_measureOverdraw->integer ) {
+		return;
+	}
+
+	offset = R_EnemyHighlightOffset( backEnd.currentEntity->e.shaderTexCoord[0], 1.01f );
+
+	qglEnable( GL_STENCIL_TEST );
+	qglStencilMask( 255 );
+
+	qglGetBooleanv( GL_COLOR_WRITEMASK, rgba );
+	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+	qglStencilFunc( GL_ALWAYS, 1, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_REPLACE );
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_ONE );
+	RB_UpdateTessVao( ATTR_POSITION | ATTR_TEXCOORD );
+	R_EnemyHighlightBindTextureColorShader( &clearColor );
+	R_DrawElements( tess.numIndexes, tess.firstIndex );
+
+	R_EnemyHighlightExpand( originalXYZ, offset );
+	RB_UpdateTessVao( ATTR_POSITION );
+	qglColorMask( rgba[0], rgba[1], rgba[2], rgba[3] );
+	qglStencilFunc( GL_NOTEQUAL, 1, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_KEEP );
+	GL_Cull( CT_BACK_SIDED );
+	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
+	R_EnemyHighlightBindTextureColorShader( &backEnd.currentEntity->e.shader );
+	R_DrawElements( tess.numIndexes, tess.firstIndex );
+
+	R_EnemyHighlightRestore( originalXYZ );
+	RB_UpdateTessVao( ATTR_POSITION );
+	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+	qglStencilFunc( GL_ALWAYS, 0, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_ZERO );
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_ONE );
+	R_EnemyHighlightBindTextureColorShader( &clearColor );
+	R_DrawElements( tess.numIndexes, tess.firstIndex );
+
+	qglColorMask( rgba[0], rgba[1], rgba[2], rgba[3] );
+	qglDisable( GL_STENCIL_TEST );
+}
+
 void R_AddEdgeDef( int i1, int i2, int facing ) {
 	int		c;
 

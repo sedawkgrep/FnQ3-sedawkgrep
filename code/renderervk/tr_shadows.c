@@ -21,6 +21,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 #include "tr_local.h"
 
+#ifdef USE_VULKAN
+uint32_t VK_PushUniform( const vkUniform_t *uniform );
+#endif
+
 
 /*
 
@@ -44,6 +48,181 @@ typedef struct {
 static	edgeDef_t	edgeDefs[SHADER_MAX_VERTEXES][MAX_EDGE_DEFS];
 static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
 static	int			facing[SHADER_MAX_INDEXES/3];
+
+static float R_EnemyHighlightScale( float scale, float fallbackScale ) {
+	if ( scale <= 1.0f ) {
+		scale = fallbackScale;
+	}
+
+	if ( scale < 1.001f ) {
+		scale = 1.001f;
+	} else if ( scale > 1.25f ) {
+		scale = 1.25f;
+	}
+
+	return scale;
+}
+
+
+static float R_EnemyHighlightOffset( float scale, float fallbackScale ) {
+	scale = R_EnemyHighlightScale( scale, fallbackScale );
+
+	/*
+	Scaling around the entity origin drifts badly on segmented player models
+	because the MD3 pivots are not centered on the rendered surface. Expand
+	along the tessellated normals instead and derive the shell width from the
+	existing scale factor.
+	*/
+	return ( scale - 1.0f ) * 32.0f;
+}
+
+
+static float R_EnemyHighlightRimFactor( const vec4_t position, const vec3_t normal ) {
+	vec3_t viewer;
+	float facingDot;
+	float rim;
+
+	VectorSubtract( backEnd.or.viewOrigin, position, viewer );
+	if ( VectorNormalize( viewer ) <= 0.0f ) {
+		return 0.0f;
+	}
+
+	facingDot = DotProduct( normal, viewer );
+	if ( facingDot < 0.0f ) {
+		facingDot = -facingDot;
+	}
+
+	rim = 1.0f - facingDot;
+	rim = ( rim - 0.10f ) * ( 1.0f / 0.90f );
+
+	if ( rim <= 0.0f ) {
+		return 0.0f;
+	}
+
+	if ( rim >= 1.0f ) {
+		return 1.0f;
+	}
+
+	return rim * rim;
+}
+
+
+static void R_EnemyHighlightExpand( vec4_t *originalXYZ, float offset ) {
+	int i;
+	vec3_t normal;
+
+	for ( i = 0; i < tess.numVertexes; i++ ) {
+		Vector4Copy( tess.xyz[i], originalXYZ[i] );
+		VectorCopy( tess.normal[i], normal );
+		VectorNormalizeFast( normal );
+		VectorMA( originalXYZ[i], offset, normal, tess.xyz[i] );
+	}
+}
+
+
+static void R_EnemyHighlightRestore( const vec4_t *originalXYZ ) {
+	Com_Memcpy( tess.xyz, originalXYZ, tess.numVertexes * sizeof( tess.xyz[0] ) );
+}
+
+
+#ifdef USE_VULKAN
+static uint32_t R_EnemyHighlightPipeline( unsigned int stateBits, cullType_t cull, Vk_Shadow_Phase shadowPhase, Vk_Shader_Type shaderType ) {
+	Vk_Pipeline_Def def;
+
+	Com_Memset( &def, 0, sizeof( def ) );
+	def.shader_type = shaderType;
+	def.state_bits = stateBits;
+	def.face_culling = cull;
+	def.mirror = ( backEnd.viewParms.portalView == PV_MIRROR );
+	def.shadow_phase = shadowPhase;
+
+	return vk_find_pipeline_ext( 0, &def, qfalse );
+}
+
+
+static void R_EnemyHighlightBindTexture( void ) {
+	GL_SelectTexture( 0 );
+	GL_Bind( tr.whiteImage );
+	tess.svars.texcoordPtr[0] = tess.texCoords[0];
+}
+
+
+static void R_EnemyHighlightBindOutlineResources( void ) {
+	vkUniform_t uniform;
+
+	Com_Memset( &uniform, 0, sizeof( uniform ) );
+	uniform.ent.color[0][0] = backEnd.currentEntity->e.shader.rgba[0] / 255.0f;
+	uniform.ent.color[0][1] = backEnd.currentEntity->e.shader.rgba[1] / 255.0f;
+	uniform.ent.color[0][2] = backEnd.currentEntity->e.shader.rgba[2] / 255.0f;
+	uniform.ent.color[0][3] = backEnd.currentEntity->e.shader.rgba[3] / 255.0f;
+
+	R_EnemyHighlightBindTexture();
+	VK_PushUniform( &uniform );
+}
+
+
+static void R_EnemyHighlightColor( const color4ub_t *color ) {
+	int i;
+	vec3_t normal;
+
+	for ( i = 0; i < tess.numVertexes; i++ ) {
+		float rim;
+
+		VectorCopy( tess.normal[i], normal );
+		VectorNormalizeFast( normal );
+
+		rim = R_EnemyHighlightRimFactor( tess.xyz[i], normal );
+
+		tess.svars.colors[0][i].rgba[0] = color->rgba[0];
+		tess.svars.colors[0][i].rgba[1] = color->rgba[1];
+		tess.svars.colors[0][i].rgba[2] = color->rgba[2];
+		tess.svars.colors[0][i].rgba[3] = (byte)( color->rgba[3] * rim + 0.5f );
+	}
+}
+
+
+void RB_EnemyRimTessEnd( void ) {
+	if ( !backEnd.currentEntity ) {
+		return;
+	}
+
+	R_EnemyHighlightColor( &backEnd.currentEntity->e.shader );
+	R_EnemyHighlightBindTexture();
+
+	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE, CT_FRONT_SIDED, SHADOW_DISABLED, TYPE_SIGNLE_TEXTURE ) );
+	vk_bind_index();
+	vk_bind_geometry( TESS_XYZ | TESS_RGBA0 | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qtrue );
+}
+
+
+void RB_EnemyOutlineTessEnd( void ) {
+	vec4_t originalXYZ[SHADER_MAX_VERTEXES];
+	float offset;
+
+	if ( !backEnd.currentEntity || glConfig.stencilBits <= 0 ) {
+		return;
+	}
+
+	offset = R_EnemyHighlightOffset( backEnd.currentEntity->e.shaderTexCoord[0], 1.01f );
+	R_EnemyHighlightBindOutlineResources();
+
+	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_DEPTHFUNC_EQUAL, CT_FRONT_SIDED, SHADOW_OUTLINE_MASK, TYPE_SIGNLE_TEXTURE_ENT_COLOR ) );
+	vk_bind_index();
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qtrue );
+
+	R_EnemyHighlightExpand( originalXYZ, offset );
+	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA, CT_BACK_SIDED, SHADOW_OUTLINE_SHELL, TYPE_SIGNLE_TEXTURE_ENT_COLOR ) );
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qtrue );
+
+	R_EnemyHighlightRestore( originalXYZ );
+	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_DEPTHFUNC_EQUAL, CT_FRONT_SIDED, SHADOW_OUTLINE_CLEAR, TYPE_SIGNLE_TEXTURE_ENT_COLOR ) );
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qtrue );
+}
+#endif
 
 static void R_AddEdgeDef( int i1, int i2, int f ) {
 	int		c;

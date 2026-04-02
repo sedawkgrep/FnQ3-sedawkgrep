@@ -1197,6 +1197,8 @@ typedef struct {
 	shader_t				*cinematicShader;
 	shader_t				*shadowShader;
 	shader_t				*projectionShadowShader;
+	shader_t				*enemyRimShader;
+	shader_t				*enemyOutlineShader;
 
 	shader_t				*flareShader;
 	shader_t				*sunShader;
@@ -1713,6 +1715,8 @@ SHADOWS
 
 void RB_ShadowTessEnd( void );
 void RB_ShadowFinish( void );
+void RB_EnemyRimTessEnd( void );
+void RB_EnemyOutlineTessEnd( void );
 void RB_ProjectionShadowDeform( void );
 
 /*

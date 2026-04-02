@@ -45,6 +45,192 @@ static	edgeDef_t	edgeDefs[SHADER_MAX_VERTEXES][MAX_EDGE_DEFS];
 static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
 static	int			facing[SHADER_MAX_INDEXES/3];
 
+
+static float R_EnemyHighlightScale( float scale, float fallbackScale ) {
+	if ( scale <= 1.0f ) {
+		scale = fallbackScale;
+	}
+
+	if ( scale < 1.001f ) {
+		scale = 1.001f;
+	} else if ( scale > 1.25f ) {
+		scale = 1.25f;
+	}
+
+	return scale;
+}
+
+
+static float R_EnemyHighlightOffset( float scale, float fallbackScale ) {
+	scale = R_EnemyHighlightScale( scale, fallbackScale );
+
+	/*
+	Scaling around the entity origin drifts badly on segmented player models
+	because the MD3 pivots are not centered on the rendered surface. Expand
+	along the tessellated normals instead and derive the shell width from the
+	existing scale factor.
+	*/
+	return ( scale - 1.0f ) * 32.0f;
+}
+
+
+static float R_EnemyHighlightRimFactor( const vec4_t position, const vec3_t normal ) {
+	vec3_t viewer;
+	float facingDot;
+	float rim;
+
+	VectorSubtract( backEnd.or.viewOrigin, position, viewer );
+	if ( VectorNormalize( viewer ) <= 0.0f ) {
+		return 0.0f;
+	}
+
+	facingDot = DotProduct( normal, viewer );
+	if ( facingDot < 0.0f ) {
+		facingDot = -facingDot;
+	}
+
+	rim = 1.0f - facingDot;
+	rim = ( rim - 0.10f ) * ( 1.0f / 0.90f );
+
+	if ( rim <= 0.0f ) {
+		return 0.0f;
+	}
+
+	if ( rim >= 1.0f ) {
+		return 1.0f;
+	}
+
+	return rim * rim;
+}
+
+
+static void R_EnemyHighlightExpand( vec4_t *originalXYZ, float offset ) {
+	int i;
+	vec3_t normal;
+
+	for ( i = 0; i < tess.numVertexes; i++ ) {
+		Vector4Copy( tess.xyz[i], originalXYZ[i] );
+		VectorCopy( tess.normal[i], normal );
+		VectorNormalizeFast( normal );
+		VectorMA( originalXYZ[i], offset, normal, tess.xyz[i] );
+	}
+}
+
+
+static void R_EnemyHighlightRestore( const vec4_t *originalXYZ ) {
+	Com_Memcpy( tess.xyz, originalXYZ, tess.numVertexes * sizeof( tess.xyz[0] ) );
+}
+
+
+static void R_EnemyHighlightColor( const color4ub_t *color ) {
+	int i;
+	vec3_t normal;
+
+	for ( i = 0; i < tess.numVertexes; i++ ) {
+		float rim;
+
+		VectorCopy( tess.normal[i], normal );
+		VectorNormalizeFast( normal );
+
+		rim = R_EnemyHighlightRimFactor( tess.xyz[i], normal );
+
+		tess.svars.colors[i].rgba[0] = color->rgba[0];
+		tess.svars.colors[i].rgba[1] = color->rgba[1];
+		tess.svars.colors[i].rgba[2] = color->rgba[2];
+		tess.svars.colors[i].rgba[3] = (byte)( color->rgba[3] * rim + 0.5f );
+	}
+}
+
+
+void RB_EnemyRimTessEnd( void ) {
+	if ( !backEnd.currentEntity ) {
+		return;
+	}
+
+	GL_ProgramDisable();
+	GL_ClientState( 1, CLS_NONE );
+	GL_ClientState( 0, CLS_COLOR_ARRAY );
+	qglVertexPointer( 3, GL_FLOAT, sizeof( tess.xyz[0] ), tess.xyz );
+	R_EnemyHighlightColor( &backEnd.currentEntity->e.shader );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors[0].rgba );
+
+	if ( qglLockArraysEXT ) {
+		qglLockArraysEXT( 0, tess.numVertexes );
+	}
+
+	qglDisable( GL_TEXTURE_2D );
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE );
+	R_DrawElements( tess.numIndexes, tess.indexes );
+	qglEnable( GL_TEXTURE_2D );
+
+	if ( qglUnlockArraysEXT ) {
+		qglUnlockArraysEXT();
+	}
+}
+
+
+void RB_EnemyOutlineTessEnd( void ) {
+	GLboolean rgba[4];
+	vec4_t originalXYZ[SHADER_MAX_VERTEXES];
+	float offset;
+
+	if ( !backEnd.currentEntity || glConfig.stencilBits <= 0 ) {
+		return;
+	}
+
+	offset = R_EnemyHighlightOffset( backEnd.currentEntity->e.shaderTexCoord[0], 1.01f );
+
+	GL_ProgramDisable();
+	GL_ClientState( 1, CLS_NONE );
+	GL_ClientState( 0, CLS_NONE );
+	qglVertexPointer( 3, GL_FLOAT, sizeof( tess.xyz[0] ), tess.xyz );
+
+	if ( qglLockArraysEXT ) {
+		qglLockArraysEXT( 0, tess.numVertexes );
+	}
+
+	qglDisable( GL_TEXTURE_2D );
+	qglEnable( GL_STENCIL_TEST );
+	qglStencilMask( 255 );
+
+	qglGetBooleanv( GL_COLOR_WRITEMASK, rgba );
+	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+	qglStencilFunc( GL_ALWAYS, 1, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_REPLACE );
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_ONE );
+	R_DrawElements( tess.numIndexes, tess.indexes );
+
+	R_EnemyHighlightExpand( originalXYZ, offset );
+	qglVertexPointer( 3, GL_FLOAT, sizeof( tess.xyz[0] ), tess.xyz );
+	qglColorMask( rgba[0], rgba[1], rgba[2], rgba[3] );
+	qglStencilFunc( GL_NOTEQUAL, 1, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_KEEP );
+	GL_Cull( CT_BACK_SIDED );
+	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
+	R_EnemyHighlightColor( &backEnd.currentEntity->e.shader );
+	R_DrawElements( tess.numIndexes, tess.indexes );
+
+	R_EnemyHighlightRestore( originalXYZ );
+	qglVertexPointer( 3, GL_FLOAT, sizeof( tess.xyz[0] ), tess.xyz );
+	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+	qglStencilFunc( GL_ALWAYS, 0, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_ZERO );
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_ONE );
+	R_DrawElements( tess.numIndexes, tess.indexes );
+
+	qglColorMask( rgba[0], rgba[1], rgba[2], rgba[3] );
+	qglDisable( GL_STENCIL_TEST );
+	qglColor4f( 1, 1, 1, 1 );
+	qglEnable( GL_TEXTURE_2D );
+
+	if ( qglUnlockArraysEXT ) {
+		qglUnlockArraysEXT();
+	}
+}
+
 static void R_AddEdgeDef( int i1, int i2, int f ) {
 	int		c;
 

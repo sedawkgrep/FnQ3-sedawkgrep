@@ -1010,6 +1010,22 @@ static qboolean Con_CurrentTokenMatchesSelectedCompletion( void ) {
 }
 
 
+static qboolean Con_ShouldHideMatchedCompletionPopup( const char *buffer, int cursor ) {
+	char next;
+
+	if ( !buffer || !Con_CurrentTokenMatchesSelectedCompletion() ) {
+		return qfalse;
+	}
+
+	if ( cursor != con.completionReplaceOffset + con.completionReplaceLength ) {
+		return qfalse;
+	}
+
+	next = buffer[ cursor ];
+	return ( next == '\0' || next <= ' ' || next == ';' ) ? qtrue : qfalse;
+}
+
+
 static qboolean Con_CompletionPopupEnabled( void ) {
 	return ( con_completionPopup && con_completionPopup->integer ) ? qtrue : qfalse;
 }
@@ -1258,6 +1274,18 @@ static void Con_RefreshCompletionState( void ) {
 				break;
 			}
 		}
+	}
+
+	if ( Con_ShouldHideMatchedCompletionPopup( buffer, cursor ) ) {
+		con.completionCount = 0;
+		con.completionSelection = 0;
+		con.completionAppendSpace = qfalse;
+		con.completionPopupVisible = qfalse;
+		con.completionPrependSlash = qfalse;
+		con.completionSnapshotValid = qtrue;
+		con.completionSnapshotCursor = cursor;
+		Q_strncpyz( con.completionSnapshotBuffer, buffer, sizeof( con.completionSnapshotBuffer ) );
+		return;
 	}
 
 	con.completionSnapshotValid = qtrue;

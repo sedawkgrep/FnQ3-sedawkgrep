@@ -58,6 +58,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/qcommon.h"
 #include "../renderercommon/tr_public.h"
 
+#include "unix_syscon.h"
 #include "linux_local.h" // bk001204
 
 #ifndef DEDICATED
@@ -273,6 +274,7 @@ void CON_SigTStp( int signum )
 // single exit point (regular exit or in case of signal fault)
 void NORETURN Sys_Exit( int code )
 {
+	Sys_DestroyConsole();
 	Sys_ConsoleInputShutdown();
 
 #ifdef NDEBUG // regular behavior
@@ -437,6 +439,11 @@ char *Sys_ConsoleInput( void )
 	char key;
 	char *s;
 	field_t history;
+
+	s = Sys_WindowConsoleInput();
+	if ( s != NULL ) {
+		return s;
+	}
 
 	if ( ttycon_on )
 	{
@@ -736,6 +743,8 @@ void Sys_Print( const char *msg )
 	char printmsg[ MAXPRINTMSG ];
 	size_t len;
 
+	Conbuf_AppendText( msg );
+
 	if ( ttycon_on )
 	{
 		tty_Hide();
@@ -764,12 +773,6 @@ void Sys_Print( const char *msg )
 	{
 		tty_Show();
 	}
-}
-
-
-void QDECL Sys_SetStatus( const char *format, ... )
-{
-	return;
 }
 
 
@@ -982,7 +985,7 @@ int main( int argc, const char* argv[] )
 {
 	char con_title[ MAX_CVAR_VALUE_STRING ];
 	int xpos, ypos;
-	//qboolean useXYpos;
+	qboolean useXYpos;
 	char  *cmdline;
 	int   len, i;
 	tty_err	err;
@@ -1017,11 +1020,13 @@ int main( int argc, const char* argv[] )
 		strcat( cmdline, argv[i] );
 	}
 
-	/*useXYpos = */ Com_EarlyParseCmdLine( cmdline, con_title, sizeof( con_title ), &xpos, &ypos );
+	useXYpos = Com_EarlyParseCmdLine( cmdline, con_title, sizeof( con_title ), &xpos, &ypos );
 
 	// bk000306 - clear queues
 //	memset( &eventQue[0], 0, sizeof( eventQue ) );
 //	memset( &sys_packetReceived[0], 0, sizeof( sys_packetReceived ) );
+
+	Sys_CreateConsole( con_title, xpos, ypos, useXYpos );
 
 	Com_Init( cmdline );
 

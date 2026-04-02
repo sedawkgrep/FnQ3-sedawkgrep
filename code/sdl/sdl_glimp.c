@@ -33,6 +33,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 
 #include "../client/client.h"
+#ifndef _WIN32
+#include "../unix/unix_syscon.h"
+#endif
 #include "../renderercommon/tr_public.h"
 #include "sdl_glw.h"
 #include "sdl_icon.h"
@@ -88,6 +91,16 @@ static SDL_Window *GLW_CreateWindow( const char *title, int x, int y, int w, int
 	return window;
 }
 
+static void GLW_QuitVideoSubsystem( void )
+{
+#ifndef _WIN32
+	if ( Sys_ConsoleVideoActive() ) {
+		return;
+	}
+#endif
+	SDL_QuitSubSystem( SDL_INIT_VIDEO );
+}
+
 /*
 ===============
 GLimp_Shutdown
@@ -113,7 +126,7 @@ void GLimp_Shutdown( qboolean unloadDLL )
 	}
 
 	if ( unloadDLL )
-		SDL_QuitSubSystem( SDL_INIT_VIDEO );
+		GLW_QuitVideoSubsystem();
 }
 
 
@@ -891,7 +904,7 @@ void VKimp_Init( glconfig_t *config )
 
 	if ( qvkGetInstanceProcAddr == NULL )
 	{
-		SDL_QuitSubSystem( SDL_INIT_VIDEO );
+		GLW_QuitVideoSubsystem();
 		Com_Error( ERR_FATAL, "VKimp_Init: qvkGetInstanceProcAddr is NULL" );
 	}
 
@@ -958,7 +971,7 @@ void VKimp_Shutdown( qboolean unloadDLL )
 	}
 
 	if ( unloadDLL )
-		SDL_QuitSubSystem( SDL_INIT_VIDEO );
+		GLW_QuitVideoSubsystem();
 }
 #endif // USE_VULKAN_API
 

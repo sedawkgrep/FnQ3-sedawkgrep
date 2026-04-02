@@ -417,8 +417,13 @@ extern	cvar_t	*cl_menuAspect;
 extern	cvar_t	*cl_cinematicAspect;
 extern	cvar_t	*cl_hudAspect;
 extern	cvar_t	*cl_hudDump;
-extern	cvar_t	*cl_enemyHighlight;
-extern	cvar_t	*cl_enemyHighlightOutlineScale;
+extern	cvar_t	*cl_playerHighlight;
+extern	cvar_t	*cl_playerHighlightOutlineScale;
+extern	cvar_t	*cl_playerHighlightRedColor;
+extern	cvar_t	*cl_playerHighlightBlueColor;
+extern	cvar_t	*cl_playerHighlightFreeColor;
+extern	cvar_t	*cl_playerHighlightEnemyColor;
+extern	cvar_t	*cl_playerHighlightTeammateColor;
 
 extern	cvar_t	*com_maxfps;
 

@@ -27,6 +27,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <SDL3/SDL.h>
 
 #include "../client/client.h"
+#ifndef _WIN32
+#include "../unix/unix_syscon.h"
+#endif
 #include "sdl_glw.h"
 
 static cvar_t *in_keyboardDebug;
@@ -1272,6 +1275,12 @@ void HandleEvents( void )
 
 	while ( SDL_PollEvent( &e ) )
 	{
+#ifndef _WIN32
+		if ( Sys_ConsoleHandleEvent( &e ) ) {
+			continue;
+		}
+#endif
+
 		switch( e.type )
 		{
 			case SDL_EVENT_KEY_DOWN:
@@ -1446,6 +1455,10 @@ void HandleEvents( void )
 				break;
 		}
 	}
+
+#ifndef _WIN32
+	Sys_ConsoleFrame();
+#endif
 }
 
 

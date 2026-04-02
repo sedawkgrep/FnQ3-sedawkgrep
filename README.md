@@ -23,6 +23,7 @@ FnQuake3 is a modernized Quake III Arena engine project built around a simple go
 
 ## Features
 
+- Optional player highlighting with rimlight and stencil border effects, per-mode team or free colors, and teammate/enemy override colors. See the [Visuals guide](docs/VISUALS.md).
 - Flexible 4:3-aware aspect correction for HUDs, menus, UI model widgets, and cinematics, with sensible widescreen options when you want them. See the [Aspect Correction guide](docs/ASPECT_CORRECTION.md).
 - A much more capable console, including configurable scaling, smoother scrolling, mouse interaction, text selection, drag and drop, and an optional live tab-completion popup. See the [Console guide](docs/CONSOLE.md).
 - CPMA/CNQ3-style rainbow text color escapes, with live preview right in the console input line.
@@ -49,6 +50,7 @@ FnQuake3 is a modernized Quake III Arena engine project built around a simple go
 ## Documentation
 
 - [Build Guide](BUILD.md) if you want to compile FnQuake3 yourself.
+- [Visuals Guide](docs/VISUALS.md) for player highlighting and the current visual presentation controls.
 - [Aspect Correction Guide](docs/ASPECT_CORRECTION.md) for HUD, menu, and cinematic presentation options.
 - [Console Guide](docs/CONSOLE.md) for console scaling, interaction, completion, and appearance.
 - [Technical Notes](docs/TECHNICAL.md) for maintainers, release flow, and repo conventions.

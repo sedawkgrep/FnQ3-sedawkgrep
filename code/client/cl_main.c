@@ -47,8 +47,13 @@ cvar_t	*cl_menuAspect;
 cvar_t	*cl_cinematicAspect;
 cvar_t	*cl_hudAspect;
 cvar_t	*cl_hudDump;
-cvar_t	*cl_enemyHighlight;
-cvar_t	*cl_enemyHighlightOutlineScale;
+cvar_t	*cl_playerHighlight;
+cvar_t	*cl_playerHighlightOutlineScale;
+cvar_t	*cl_playerHighlightRedColor;
+cvar_t	*cl_playerHighlightBlueColor;
+cvar_t	*cl_playerHighlightFreeColor;
+cvar_t	*cl_playerHighlightEnemyColor;
+cvar_t	*cl_playerHighlightTeammateColor;
 
 cvar_t	*cl_aviFrameRate;
 cvar_t	*cl_aviMotionJpeg;
@@ -122,6 +127,26 @@ static void	*rendererLib;
 #endif
 
 static ping_t cl_pinglist[MAX_PINGREQUESTS];
+
+
+static void CL_MigrateLegacyPlayerHighlightCvar( cvar_t *target, const char *legacyName, const char *legacyDefault ) {
+	const char *legacyValue;
+
+	if ( !target || !legacyName || !legacyDefault ) {
+		return;
+	}
+
+	legacyValue = Cvar_VariableString( legacyName );
+	if ( !legacyValue[0] || !Q_stricmp( legacyValue, legacyDefault ) ) {
+		return;
+	}
+
+	if ( Q_stricmp( target->string, target->resetString ) ) {
+		return;
+	}
+
+	Cvar_Set( target->name, legacyValue );
+}
 
 typedef struct serverStatus_s
 {
@@ -3940,17 +3965,34 @@ void CL_Init( void ) {
 	cl_hudDump = Cvar_Get( "cl_hudDump", "0", CVAR_ARCHIVE );
 	Cvar_CheckRange( cl_hudDump, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( cl_hudDump, "Dump deduplicated cgame HUD input groups to fnq3-hud-dump.json in the active game directory." );
-	cl_enemyHighlight = Cvar_Get( "cl_enemyHighlight", "0", CVAR_ARCHIVE );
-	Cvar_CheckRange( cl_enemyHighlight, "0", "3", CV_INTEGER );
-	Cvar_SetDescription( cl_enemyHighlight,
-		"Enemy player highlight effect bitmask:\n"
+	cl_playerHighlight = Cvar_Get( "cl_playerHighlight", "0", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_playerHighlight, "0", "3", CV_INTEGER );
+	Cvar_SetDescription( cl_playerHighlight,
+		"Optional player highlight effect bitmask:\n"
 		" 0 - disabled\n"
 		" 1 - rimlight only\n"
 		" 2 - stencil border only\n"
-		" 3 - rimlight and stencil border" );
-	cl_enemyHighlightOutlineScale = Cvar_Get( "cl_enemyHighlightOutlineScale", "1.06", CVAR_ARCHIVE );
-	Cvar_CheckRange( cl_enemyHighlightOutlineScale, "1.001", "1.250", CV_FLOAT );
-	Cvar_SetDescription( cl_enemyHighlightOutlineScale, "Uniform scale applied to the enemy stencil border shell." );
+		" 3 - rimlight and stencil border\n"
+		"Team modes tint red and blue teams separately unless teammate/enemy overrides are set; non-team modes use the free color.\n"
+		"Self and corpses are excluded." );
+	cl_playerHighlightOutlineScale = Cvar_Get( "cl_playerHighlightOutlineScale", "1.01", CVAR_ARCHIVE );
+	Cvar_CheckRange( cl_playerHighlightOutlineScale, "1.001", "1.250", CV_FLOAT );
+	Cvar_SetDescription( cl_playerHighlightOutlineScale, "Relative thickness factor applied to the highlight stencil border shell." );
+	cl_playerHighlightRedColor = Cvar_Get( "cl_playerHighlightRedColor", "255 32 0", CVAR_ARCHIVE );
+	Cvar_SetDescription( cl_playerHighlightRedColor, "Base highlight color for red-team players as 'R G B [A]' in 0-255 space." );
+	cl_playerHighlightBlueColor = Cvar_Get( "cl_playerHighlightBlueColor", "0 32 255", CVAR_ARCHIVE );
+	Cvar_SetDescription( cl_playerHighlightBlueColor, "Base highlight color for blue-team players as 'R G B [A]' in 0-255 space." );
+	cl_playerHighlightFreeColor = Cvar_Get( "cl_playerHighlightFreeColor", "255 32 0", CVAR_ARCHIVE );
+	Cvar_SetDescription( cl_playerHighlightFreeColor, "Base highlight color for non-team player modes as 'R G B [A]' in 0-255 space." );
+	cl_playerHighlightEnemyColor = Cvar_Get( "cl_playerHighlightEnemyColor", "", CVAR_ARCHIVE );
+	Cvar_SetDescription( cl_playerHighlightEnemyColor, "Override enemy highlight color as 'R G B [A]' in 0-255 space. Leave blank to use team/free colors." );
+	cl_playerHighlightTeammateColor = Cvar_Get( "cl_playerHighlightTeammateColor", "", CVAR_ARCHIVE );
+	Cvar_SetDescription( cl_playerHighlightTeammateColor, "Override teammate highlight color as 'R G B [A]' in 0-255 space. Leave blank to use team colors." );
+	CL_MigrateLegacyPlayerHighlightCvar( cl_playerHighlight, "cl_enemyHighlight", "0" );
+	CL_MigrateLegacyPlayerHighlightCvar( cl_playerHighlightOutlineScale, "cl_enemyHighlightOutlineScale", "1.01" );
+	CL_MigrateLegacyPlayerHighlightCvar( cl_playerHighlightRedColor, "cl_enemyHighlightRedColor", "208 96 96" );
+	CL_MigrateLegacyPlayerHighlightCvar( cl_playerHighlightBlueColor, "cl_enemyHighlightBlueColor", "96 144 224" );
+	CL_MigrateLegacyPlayerHighlightCvar( cl_playerHighlightFreeColor, "cl_enemyHighlightFreeColor", "208 96 96" );
 	CL_HudInit();
 
 	cl_aviFrameRate = Cvar_Get ("cl_aviFrameRate", "25", CVAR_ARCHIVE);

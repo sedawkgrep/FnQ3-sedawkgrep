@@ -280,7 +280,7 @@ ifeq ($(USE_SYSTEM_VORBIS),1)
 endif
 
 # extract version info
-VERSION=$(shell sed -n 's/^[[:space:]]*#define[[:space:]]*FNQ3_VERSION_STRING[[:space:]]*"\([^"]*\)".*/\1/p' $(VERSION_HEADER))
+VERSION=$(shell awk -F'"' '/^[[:space:]]*#define[[:space:]][[:space:]]*FNQ3_VERSION_STRING[[:space:]][[:space:]]*"/ { print $$2; exit }' $(VERSION_HEADER))
 
 # common qvm definition
 ifeq ($(ARCH),x86_64)
@@ -332,6 +332,7 @@ endif
 
 ifeq ($(USE_SDL),1)
   BASE_CFLAGS += -DSDL_FUNCTION_POINTER_IS_VOID_POINTER=1
+  BASE_CFLAGS += -DUSE_SDL_SYSCON=1
 endif
 
 ifeq ($(USE_CURL),1)
@@ -1246,6 +1247,7 @@ endif # !USE_SDL
 else # !MINGW
 
   Q3OBJ += \
+    $(B)/client/unix_syscon.o \
     $(B)/client/unix_main.o \
     $(B)/client/unix_shared.o \
     $(B)/client/linux_signals.o
@@ -1377,6 +1379,7 @@ ifdef MINGW
 else
   Q3DOBJ += \
   $(B)/ded/linux_signals.o \
+  $(B)/ded/unix_syscon.o \
   $(B)/ded/unix_main.o \
   $(B)/ded/unix_shared.o
 endif

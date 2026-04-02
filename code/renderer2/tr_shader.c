@@ -3782,6 +3782,13 @@ qhandle_t RE_RegisterShader( const char *name ) {
 		return 0;
 	}
 
+	if ( name[0] == '<' ) {
+		sh = R_FindShaderByName( name );
+		if ( sh != tr.defaultShader && !Q_stricmp( sh->name, name ) ) {
+			return sh->index;
+		}
+	}
+
 	sh = R_FindShader( name, LIGHTMAP_2D, qtrue );
 
 	// we want to return 0 if the shader failed to
@@ -3810,6 +3817,13 @@ qhandle_t RE_RegisterShaderNoMip( const char *name ) {
 	if ( strlen( name ) >= MAX_QPATH ) {
 		ri.Printf( PRINT_ALL, "Shader name exceeds MAX_QPATH\n" );
 		return 0;
+	}
+
+	if ( name[0] == '<' ) {
+		sh = R_FindShaderByName( name );
+		if ( sh != tr.defaultShader && !Q_stricmp( sh->name, name ) ) {
+			return sh->index;
+		}
 	}
 
 	sh = R_FindShader( name, LIGHTMAP_2D, qfalse );
@@ -4152,6 +4166,20 @@ static void CreateInternalShaders( void ) {
 	Q_strncpyz( shader.name, "<stencil shadow>", sizeof( shader.name ) );
 	shader.sort = SS_STENCIL_SHADOW;
 	tr.shadowShader = FinishShader();
+
+	InitShader( "<fnq3_enemy_rim>", LIGHTMAP_NONE );
+	stages[0].bundle[0].image[0] = tr.whiteImage;
+	stages[0].active = qtrue;
+	stages[0].stateBits = GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE;
+	shader.sort = SS_BLEND1;
+	tr.enemyRimShader = FinishShader();
+
+	InitShader( "<fnq3_enemy_outline>", LIGHTMAP_NONE );
+	stages[0].bundle[0].image[0] = tr.whiteImage;
+	stages[0].active = qtrue;
+	stages[0].stateBits = GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+	shader.sort = SS_DECAL;
+	tr.enemyOutlineShader = FinishShader();
 }
 
 

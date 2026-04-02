@@ -40,26 +40,44 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define INPUT_ID		101
 #define STATUS_ID       102
 
-#define DEFAULT_WIDTH   600
-#define DEFAULT_HEIGHT  434
+#define DEFAULT_WIDTH   860
+#define DEFAULT_HEIGHT  620
 
-#define BORDERW			1
-#define BORDERH			2
+#define MIN_WIDTH       620
+#define MIN_HEIGHT      420
 
-#define INPUT_HEIGHT    16
-#define ERROR_HEIGHT    27
+#define BORDERW			8
+#define BORDERH			8
+#define CONTROL_GAP     8
+#define FOOTER_HEIGHT   44
+#define BUTTON_HEIGHT   28
+#define COPY_WIDTH      84
+#define CLEAR_WIDTH     92
+
+#define INPUT_HEIGHT    28
+#define ERROR_HEIGHT    30
 
 #define MAX_CONSIZE		65536
 
 #define T TEXT
 
-#define EDIT_COLOR		RGB(0x18,0x00,0x00)
-#define TEXT_COLOR		RGB(0xE0,0x00,0x00)
+#define WINDOW_BG_COLOR RGB(0x08,0x0D,0x13)
+#define EDIT_COLOR		RGB(0x22,0x10,0x14)
+#define INPUT_BG_COLOR  RGB(0x2B,0x14,0x19)
+#define FOOTER_BG_COLOR RGB(0x0D,0x15,0x21)
+#define BORDER_COLOR    RGB(0x25,0x38,0x4D)
+#define TEXT_COLOR		RGB(0xDE,0xE8,0xF2)
+#define MUTED_COLOR     RGB(0x8F,0xA2,0xB8)
+#define ACCENT_COLOR    RGB(0x58,0xBC,0xFF)
+#define BUTTON_BG_COLOR RGB(0x16,0x22,0x32)
+#define BUTTON_HOVER_BG RGB(0x1C,0x2C,0x42)
+#define BUTTON_DOWN_BG  RGB(0x24,0x38,0x54)
+#define BUTTON_OFF_BG   RGB(0x0F,0x17,0x22)
 
-#define ERROR_BG_COLOR	RGB(0x90,0x80,0x80)
+#define ERROR_BG_COLOR	RGB(0x4A,0x1B,0x24)
 
-#define ERROR_COLOR_1   RGB(0xFF,0xFF,0x00)
-#define ERROR_COLOR_2   RGB(0xF0,0x00,0x00)
+#define ERROR_COLOR_1   RGB(0xFF,0xD2,0x73)
+#define ERROR_COLOR_2   RGB(0xFF,0x8E,0x7A)
 
 static field_t console;
 
@@ -77,13 +95,17 @@ typedef struct
 	HWND		hwndErrorBox;
 
 	HBRUSH		hbrEditBackground;
+	HBRUSH		hbrInputBackground;
 	HBRUSH		hbrErrorBackground;
+	HBRUSH		hbrFooterBackground;
+	HBRUSH		hbrWindowBackground;
 
 	HFONT		hfBufferFont;
 	HFONT		hfStatusFont;
 
 	char		consoleText[512];
 	char		returnedText[512];
+	char		statusText[256];
 
 	int			visLevel;
 	qboolean	quitOnClose;
@@ -125,11 +147,110 @@ static int GetStatusBarHeight( void )
 	RECT rect;
 
 	if ( !s_wcd.hwndStatusBar )
-		return 22;
+		return FOOTER_HEIGHT;
 
 	GetClientRect( s_wcd.hwndStatusBar, &rect );
 
 	return (rect.bottom-rect.top+1);
+}
+
+static void LayoutFooterControls( HWND hWnd )
+{
+	RECT rect;
+	int y;
+	int x;
+
+	if ( !s_wcd.hwndButtonCopy || !s_wcd.hwndButtonClear ) {
+		return;
+	}
+
+	GetClientRect( hWnd, &rect );
+
+	y = ( rect.bottom - rect.top - BUTTON_HEIGHT ) / 2;
+	x = rect.right - rect.left - BORDERW;
+
+	x -= CLEAR_WIDTH;
+	SetWindowPos( s_wcd.hwndButtonClear, HWND_TOP, x, y, CLEAR_WIDTH, BUTTON_HEIGHT, SWP_NOZORDER );
+
+	x -= CONTROL_GAP + COPY_WIDTH;
+	SetWindowPos( s_wcd.hwndButtonCopy, HWND_TOP, x, y, COPY_WIDTH, BUTTON_HEIGHT, SWP_NOZORDER );
+}
+
+static void DrawFooterButton( const DRAWITEMSTRUCT *dis, const TCHAR *label )
+{
+	HBRUSH brush;
+	HPEN pen;
+	HGDIOBJ oldBrush, oldPen, oldFont;
+	RECT rect;
+	COLORREF fillColor, textColor;
+
+	rect = dis->rcItem;
+
+	if ( dis->itemState & ODS_DISABLED ) {
+		fillColor = BUTTON_OFF_BG;
+		textColor = MUTED_COLOR;
+	} else if ( dis->itemState & ODS_SELECTED ) {
+		fillColor = BUTTON_DOWN_BG;
+		textColor = TEXT_COLOR;
+	} else {
+		fillColor = BUTTON_BG_COLOR;
+		textColor = TEXT_COLOR;
+	}
+
+	brush = CreateSolidBrush( fillColor );
+	pen = CreatePen( PS_SOLID, 1, BORDER_COLOR );
+
+	oldBrush = SelectObject( dis->hDC, brush );
+	oldPen = SelectObject( dis->hDC, pen );
+	oldFont = SelectObject( dis->hDC, s_wcd.hfStatusFont );
+
+	SetBkMode( dis->hDC, TRANSPARENT );
+	SetTextColor( dis->hDC, textColor );
+
+	RoundRect( dis->hDC, rect.left, rect.top, rect.right, rect.bottom, 8, 8 );
+	DrawText( dis->hDC, label, -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
+
+	SelectObject( dis->hDC, oldFont );
+	SelectObject( dis->hDC, oldPen );
+	SelectObject( dis->hDC, oldBrush );
+
+	DeleteObject( pen );
+	DeleteObject( brush );
+}
+
+static void PaintFooter( HWND hWnd )
+{
+	PAINTSTRUCT ps;
+	RECT rect;
+	RECT textRect;
+	HDC hdc;
+	HPEN pen, oldPen;
+	HGDIOBJ oldFont;
+
+	hdc = BeginPaint( hWnd, &ps );
+	GetClientRect( hWnd, &rect );
+
+	FillRect( hdc, &rect, s_wcd.hbrFooterBackground );
+
+	pen = CreatePen( PS_SOLID, 1, BORDER_COLOR );
+	oldPen = SelectObject( hdc, pen );
+	MoveToEx( hdc, rect.left, rect.top, NULL );
+	LineTo( hdc, rect.right, rect.top );
+	SelectObject( hdc, oldPen );
+	DeleteObject( pen );
+
+	textRect = rect;
+	textRect.left += BORDERW;
+	textRect.right -= CLEAR_WIDTH + COPY_WIDTH + CONTROL_GAP * 3;
+
+	oldFont = SelectObject( hdc, s_wcd.hfStatusFont );
+	SetBkMode( hdc, TRANSPARENT );
+	SetTextColor( hdc, s_wcd.statusText[0] ? ACCENT_COLOR : MUTED_COLOR );
+	DrawText( hdc, AtoW( s_wcd.statusText[0] ? s_wcd.statusText : "System console ready" ),
+		-1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS );
+	SelectObject( hdc, oldFont );
+
+	EndPaint( hWnd, &ps );
 }
 
 
@@ -229,9 +350,9 @@ static LRESULT WINAPI ConWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	case WM_CTLCOLOREDIT:
 		if ( ( HWND ) lParam == s_wcd.hwndInputLine )
 		{
-			SetBkColor( ( HDC ) wParam, EDIT_COLOR );
+			SetBkColor( ( HDC ) wParam, INPUT_BG_COLOR );
 			SetTextColor( ( HDC ) wParam, TEXT_COLOR );
-			return ( LRESULT ) s_wcd.hbrEditBackground;
+			return ( LRESULT ) s_wcd.hbrInputBackground;
 		}
 		break;
 
@@ -260,8 +381,20 @@ static LRESULT WINAPI ConWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 
 	case WM_CREATE:
 		s_wcd.hbrEditBackground = CreateSolidBrush( EDIT_COLOR );
+		s_wcd.hbrInputBackground = CreateSolidBrush( INPUT_BG_COLOR );
+		s_wcd.hbrFooterBackground = CreateSolidBrush( FOOTER_BG_COLOR );
+		s_wcd.hbrWindowBackground = CreateSolidBrush( WINDOW_BG_COLOR );
+		s_wcd.statusText[0] = '\0';
 		GetWindowRect( hWnd, &g_wv.conRect );
 		break;
+
+	case WM_ERASEBKGND:
+		{
+			RECT rect;
+			GetClientRect( hWnd, &rect );
+			FillRect( (HDC)wParam, &rect, s_wcd.hbrWindowBackground );
+			return 1;
+		}
 
 	case WM_MOVE:
 		GetWindowRect( hWnd, &g_wv.conRect );
@@ -271,6 +404,10 @@ static LRESULT WINAPI ConWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		{
 			RECT rect;
 			int sth;
+			int footerY;
+			int inputY;
+			int bufferY;
+			int bufferHeight;
 
 			sth = GetStatusBarHeight();
 			GetClientRect( hWnd, &rect );
@@ -278,10 +415,22 @@ static LRESULT WINAPI ConWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			s_wcd.windowWidth = rect.right - rect.left + 1;
 			s_wcd.windowHeight = rect.bottom - rect.top + 1;
 
-			if ( s_wcd.hwndErrorBox ) {
-				SetWindowPos( s_wcd.hwndBuffer, HWND_TOP, BORDERW, ERROR_HEIGHT + BORDERH*2, rect.right - BORDERW*2, rect.bottom - sth - ERROR_HEIGHT - BORDERH*3 + 1, SWP_NOZORDER );
+			footerY = rect.bottom - sth + 1;
+			if ( s_wcd.hwndInputLine ) {
+				inputY = footerY - CONTROL_GAP - INPUT_HEIGHT;
 			} else {
-				SetWindowPos( s_wcd.hwndBuffer, HWND_TOP, BORDERW, BORDERH, rect.right - BORDERW*2, rect.bottom - sth - INPUT_HEIGHT - BORDERH*3 - 2, SWP_NOZORDER );
+				inputY = footerY;
+			}
+			bufferY = s_wcd.hwndErrorBox ? BORDERH + ERROR_HEIGHT + CONTROL_GAP : BORDERH;
+			bufferHeight = ( s_wcd.hwndInputLine ? inputY - CONTROL_GAP : footerY - CONTROL_GAP ) - bufferY;
+			if ( bufferHeight < 32 ) {
+				bufferHeight = 32;
+			}
+
+			if ( s_wcd.hwndErrorBox ) {
+				SetWindowPos( s_wcd.hwndBuffer, HWND_TOP, BORDERW, bufferY, rect.right - BORDERW*2, bufferHeight, SWP_NOZORDER );
+			} else {
+				SetWindowPos( s_wcd.hwndBuffer, HWND_TOP, BORDERW, bufferY, rect.right - BORDERW*2, bufferHeight, SWP_NOZORDER );
 			}
 
 			if ( s_wcd.hwndErrorBox ) {
@@ -290,12 +439,13 @@ static LRESULT WINAPI ConWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			}
 
 			if ( s_wcd.hwndInputLine ) {
-				SetWindowPos( s_wcd.hwndInputLine, HWND_TOP, BORDERW, rect.bottom - sth - INPUT_HEIGHT - BORDERH, rect.right - BORDERW*2, INPUT_HEIGHT, SWP_NOZORDER );
+				SetWindowPos( s_wcd.hwndInputLine, HWND_TOP, BORDERW, inputY, rect.right - BORDERW*2, INPUT_HEIGHT, SWP_NOZORDER );
 				InvalidateRect( s_wcd.hwndInputLine, NULL, FALSE );
 			}
 
 			if ( s_wcd.hwndStatusBar ) {
-				SetWindowPos( s_wcd.hwndStatusBar, HWND_TOP, BORDERW, rect.bottom, rect.right - BORDERW*2, 26, SWP_NOZORDER );
+				SetWindowPos( s_wcd.hwndStatusBar, HWND_TOP, BORDERW, footerY, rect.right - BORDERW*2, sth, SWP_NOZORDER );
+				LayoutFooterControls( s_wcd.hwndStatusBar );
 				InvalidateRect( s_wcd.hwndStatusBar, NULL, FALSE );
 			}
 
@@ -309,8 +459,8 @@ static LRESULT WINAPI ConWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			int w, h;
 			RECT *r;
 			r = (LPRECT) lParam;
-			w = r->right - r->left - 280+BORDERW*2 + 1;
-			h = r->bottom - r->top - 155+BORDERH*3 + 1;
+			w = r->right - r->left - MIN_WIDTH;
+			h = r->bottom - r->top - MIN_HEIGHT;
 			if ( w < 0 ) {
 				if ( wParam == WMSZ_RIGHT || wParam == WMSZ_TOPRIGHT || wParam == WMSZ_BOTTOMRIGHT ) {
 					r->right -= w;
@@ -504,8 +654,31 @@ static LRESULT WINAPI StatusWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 	switch (uMsg)
 	{
 
+	case WM_SIZE:
+		LayoutFooterControls( hWnd );
+		InvalidateRect( hWnd, NULL, FALSE );
+		return 0;
+
+	case WM_PAINT:
+		PaintFooter( hWnd );
+		return 0;
+
+	case WM_DRAWITEM:
+		{
+			const DRAWITEMSTRUCT *dis = (const DRAWITEMSTRUCT *)lParam;
+			if ( dis->CtlID == COPY_ID ) {
+				DrawFooterButton( dis, T("Copy All") );
+				return TRUE;
+			}
+			if ( dis->CtlID == CLEAR_ID ) {
+				DrawFooterButton( dis, T("Clear Log") );
+				return TRUE;
+			}
+		}
+		break;
+
 	case WM_COMMAND:
-		if ( wParam == COPY_ID )
+		if ( LOWORD( wParam ) == COPY_ID )
 		{
 			if ( OpenClipboard( s_wcd.hWnd ) )
 			{
@@ -533,7 +706,7 @@ static LRESULT WINAPI StatusWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 				SetFocus( s_wcd.hwndInputLine );
 			}
 		}
-		else if ( wParam == CLEAR_ID )
+		else if ( LOWORD( wParam ) == CLEAR_ID )
 		{
 			ConClear();
 			if ( s_wcd.hwndInputLine ) {
@@ -546,7 +719,7 @@ static LRESULT WINAPI StatusWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 		if ( s_wcd.hwndInputLine ) {
 			SetFocus( s_wcd.hwndInputLine );
 		}
-		break;
+		return 0;
     }
 
 	return CallWindowProc( (WNDPROC)s_wcd.SysStatusWndProc, hWnd, uMsg, wParam, lParam );
@@ -699,8 +872,6 @@ void Sys_CreateConsole( const char *title, int xPos, int yPos, qboolean useXYpos
 
 	int DEDSTYLE = WS_POPUPWINDOW | WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX;
 	int	fontWidth, fontHeight, statusFontHeight;
-	int widths[2] = { 140, -1 };
-	int borders[3];
 	int x, y, w, h, sth;
 	int con_x, con_y;
 
@@ -717,7 +888,7 @@ void Sys_CreateConsole( const char *title, int xPos, int yPos, qboolean useXYpos
 	wc.hInstance     = g_wv.hInstance;
 	wc.hIcon         = LoadIcon( g_wv.hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	wc.hCursor       = LoadCursor (NULL,IDC_ARROW);
-	wc.hbrBackground = (HBRUSH)(LRESULT)COLOR_WINDOW;
+	wc.hbrBackground = NULL;
 	wc.lpszMenuName  = 0;
 	wc.lpszClassName = DEDCLASS;
 
@@ -759,9 +930,9 @@ void Sys_CreateConsole( const char *title, int xPos, int yPos, qboolean useXYpos
 		ReleaseDC( GetDesktopWindow(), hDC );
 	}
 
-	fontWidth = -8;
-	fontHeight = -12;
-	statusFontHeight = -11;
+	fontWidth = 0;
+	fontHeight = -18;
+	statusFontHeight = -15;
 
 	s_wcd.windowWidth = rect.right - rect.left + 1;
 	s_wcd.windowHeight = rect.bottom - rect.top + 1;
@@ -792,50 +963,35 @@ void Sys_CreateConsole( const char *title, int xPos, int yPos, qboolean useXYpos
 	s_wcd.hfBufferFont = CreateFont( fontHeight, fontWidth,
 		0,
 		0,
-		FW_DONTCARE,
+		FW_NORMAL,
 		FALSE,
 		FALSE,
 		FALSE,
 		DEFAULT_CHARSET,
 		OUT_DEFAULT_PRECIS,
 		CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY,
+		CLEARTYPE_QUALITY,
 		FF_MODERN | FIXED_PITCH,
-		T("Terminal") );
+		T("Consolas") );
 
 	s_wcd.hfStatusFont = CreateFont( statusFontHeight, 0,
-		0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+		0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET,
 		OUT_DEFAULT_PRECIS,
 		CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY,
+		CLEARTYPE_QUALITY,
 		DEFAULT_PITCH,
-		T("Tahoma") );
+		T("Segoe UI") );
 
-	s_wcd.hwndStatusBar = CreateWindow( STATUSCLASSNAME, NULL, WS_VISIBLE | WS_CHILD,
-		1,1,32,32, s_wcd.hWnd, NULL, g_wv.hInstance, NULL );
-
-	// split statusbar into parts and set styles
-	SendMessage( s_wcd.hwndStatusBar, WM_SETFONT, ( WPARAM ) s_wcd.hfStatusFont, 0 );
-	SendMessage( s_wcd.hwndStatusBar, SB_GETBORDERS, 0, (LPARAM)&borders );
-	widths[0] += borders[1]*2; // count vertical borders
-	SendMessage( s_wcd.hwndStatusBar, SB_SETPARTS, 2, (LPARAM)&widths );
-	SendMessage( s_wcd.hwndStatusBar, SB_SETTEXT, 0 | SBT_NOBORDERS, (LPARAM)"" );
-
-	SendMessage( s_wcd.hwndStatusBar, SB_GETRECT, 0, (LPARAM)&rect );
-	rect.left += borders[1];
-	rect.right -= borders[1];
-	x = rect.left;
-	h = rect.bottom - rect.top - 1;
-	w = (rect.right - rect.left - 4) / 2;
+	s_wcd.hwndStatusBar = CreateWindow( T("static"), NULL, WS_VISIBLE | WS_CHILD,
+		1, 1, 32, FOOTER_HEIGHT, s_wcd.hWnd, NULL, g_wv.hInstance, NULL );
 
 	// create the buttons
-	s_wcd.hwndButtonCopy = CreateWindow( T("button"), T("copy"), WS_VISIBLE | WS_CHILD,
-		x, rect.top, w, h, s_wcd.hwndStatusBar, (HMENU)(LRESULT)COPY_ID, g_wv.hInstance, NULL );
-	x += w + 4;
+	s_wcd.hwndButtonCopy = CreateWindow( T("button"), T("Copy All"), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
+		0, 0, COPY_WIDTH, BUTTON_HEIGHT, s_wcd.hwndStatusBar, (HMENU)(LRESULT)COPY_ID, g_wv.hInstance, NULL );
 
-	s_wcd.hwndButtonClear = CreateWindow( T("button"), T("clear"), WS_VISIBLE | WS_CHILD,
-		x, rect.top, w, h, s_wcd.hwndStatusBar, (HMENU)(LRESULT)CLEAR_ID, g_wv.hInstance, NULL );
+	s_wcd.hwndButtonClear = CreateWindow( T("button"), T("Clear Log"), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
+		0, 0, CLEAR_WIDTH, BUTTON_HEIGHT, s_wcd.hwndStatusBar, (HMENU)(LRESULT)CLEAR_ID, g_wv.hInstance, NULL );
 
 	SendMessage( s_wcd.hwndButtonCopy, WM_SETFONT, ( WPARAM ) s_wcd.hfStatusFont, 0 );
 	SendMessage( s_wcd.hwndButtonClear, WM_SETFONT, ( WPARAM ) s_wcd.hfStatusFont, 0 );
@@ -851,7 +1007,7 @@ void Sys_CreateConsole( const char *title, int xPos, int yPos, qboolean useXYpos
 	// create the input line
 	s_wcd.hwndInputLine = CreateWindow( T("edit"), NULL, WS_CHILD | WS_VISIBLE | WS_BORDER |
 		ES_LEFT | ES_AUTOHSCROLL,
-		BORDERW, rect.bottom - sth - INPUT_HEIGHT - BORDERH, rect.right - BORDERW*2, INPUT_HEIGHT,
+		BORDERW, rect.bottom - sth - CONTROL_GAP - INPUT_HEIGHT, rect.right - BORDERW*2, INPUT_HEIGHT,
 		s_wcd.hWnd,
 		(HMENU)(LRESULT)INPUT_ID,	// child window ID
 		g_wv.hInstance, NULL );
@@ -859,7 +1015,7 @@ void Sys_CreateConsole( const char *title, int xPos, int yPos, qboolean useXYpos
 	// create the scrollbuffer
 	s_wcd.hwndBuffer = CreateWindow( T("edit"), NULL, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_BORDER |
 		ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_NOHIDESEL,
-		BORDERW, BORDERH, rect.right - BORDERW*2, rect.bottom - sth - INPUT_HEIGHT - BORDERH*3 - 2,
+		BORDERW, BORDERH, rect.right - BORDERW*2, rect.bottom - sth - INPUT_HEIGHT - CONTROL_GAP * 2 - BORDERH,
 		s_wcd.hWnd,
 		(HMENU)(LRESULT)EDIT_ID,	// child window ID
 		g_wv.hInstance, NULL );
@@ -870,6 +1026,7 @@ void Sys_CreateConsole( const char *title, int xPos, int yPos, qboolean useXYpos
 	s_wcd.SysInputLineWndProc = SetWindowLongPtr( s_wcd.hwndInputLine, GWLP_WNDPROC, ( LONG_PTR ) InputLineWndProc );
 	s_wcd.SysStatusWndProc = SetWindowLongPtr( s_wcd.hwndStatusBar, GWLP_WNDPROC, ( LONG_PTR ) StatusWndProc );
 	s_wcd.SysBufferWndProc = SetWindowLongPtr( s_wcd.hwndBuffer, GWLP_WNDPROC, ( LONG_PTR ) BufferWndProc );
+	LayoutFooterControls( s_wcd.hwndStatusBar );
 
 	if ( title && *title ) {
 		SetWindowText( s_wcd.hWnd, AtoW( title ) );
@@ -956,17 +1113,15 @@ Sys_SetStatus
 void QDECL Sys_SetStatus( const char *format, ... )
 {
 	va_list		argptr;
-	char		text[256];
 
 	if ( s_wcd.hwndStatusBar == NULL )
 		return;
 
-	text[0] = ' '; // add leading space for better look :P
 	va_start( argptr, format );
-	Q_vsnprintf( text + 1, sizeof( text ) - 1, format, argptr );
+	Q_vsnprintf( s_wcd.statusText, sizeof( s_wcd.statusText ), format, argptr );
 	va_end( argptr );
 
-	SendMessage( s_wcd.hwndStatusBar, SB_SETTEXT, (WPARAM) 1 | 0, (LPARAM) AtoW( text ) );
+	InvalidateRect( s_wcd.hwndStatusBar, NULL, FALSE );
 }
 
 
@@ -1139,7 +1294,10 @@ void Sys_SetErrorText( const char *buf )
 	GetClientRect( s_wcd.hWnd, &rect );
 
 	// shift buffer position
-	SetWindowPos( s_wcd.hwndBuffer, HWND_TOP, BORDERW, ERROR_HEIGHT + BORDERH*2, rect.right - BORDERW*2, rect.bottom - sth - ERROR_HEIGHT - BORDERH*3+1, SWP_NOZORDER );
+	SetWindowPos( s_wcd.hwndBuffer, HWND_TOP, BORDERW, BORDERH + ERROR_HEIGHT + CONTROL_GAP,
+		rect.right - BORDERW*2,
+		rect.bottom - sth - ERROR_HEIGHT - CONTROL_GAP * 2 - BORDERH,
+		SWP_NOZORDER );
 
 	s_wcd.hwndErrorBox = CreateWindow( T("static"), NULL, WS_CHILD | WS_VISIBLE | SS_SUNKEN,
 		BORDERW, BORDERH, rect.right - BORDERW*2, ERROR_HEIGHT,
