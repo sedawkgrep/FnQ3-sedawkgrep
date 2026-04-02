@@ -20,6 +20,13 @@ If you just want the short version: you can choose whether the console stays ful
 - `con_scrollSmoothSpeed`: Set the smooth-scroll speed in lines per second.
 - `con_completionPopup 0`: Disable the live completion popup and keep classic `Tab` completion behavior.
 - `con_completionPopup 1`: Show the live completion popup while typing. This is the default.
+- `con_sayRaw 0`: Keep the legacy plain-text console chat path, which routes text through `cmd say`.
+- `con_sayRaw 1`: Use the raw console input line for plain in-game `say` chat, matching the quoted chat-style path more closely. Disabled by default.
+- `con_showClock 0`: Hide the console clock.
+- `con_showClock 1`: Show the current system time in 24-hour format.
+- `con_showClock 2`: Show the current system time in 12-hour AM/PM format.
+- `con_showVersion 0`: Hide the console version string.
+- `con_showVersion 1`: Show the console version string. This is the default.
 - `con_fade 0`: Keep console open and close transitions fully opaque.
 - `con_fade 1`: Fade console background, text, and accents in and out while it opens or closes.
 - `con_backgroundStyle 0`: Use the classic textured console background.
@@ -27,7 +34,7 @@ If you just want the short version: you can choose whether the console stays ful
 - `con_backgroundColor`: Override the console background RGB color with `R G B` values from `0-255`.
 - `con_backgroundOpacity`: Set console background opacity from `0` to `1`.
 - `con_lineColor`: Set the separator line and scrollback marker color with `R G B` values from `0-255`.
-- `con_versionColor`: Set the version text color with `R G B` values from `0-255`.
+- `con_versionColor`: Set the version and clock text color with `R G B` values from `0-255`.
 
 ## Layout And Scaling
 
@@ -90,19 +97,31 @@ Console input now exposes live, tab-based completion instead of only dumping a s
 - Matching updates as you type, so you can see where a command is going before you commit to it.
 - `Tab` accepts the current match and cycles forward through alternatives.
 - `Shift+Tab` cycles backward through alternatives.
+- Left-clicking an item in the completion popup inserts that item immediately.
 - Completion covers commands, cvars, map names for map-loading commands, and other command-specific argument completions exposed through the existing completion callback path.
 - The completion popup stays tied to the current input line instead of replacing it with a one-shot printout in the log.
+
+## Console Chat
+
+When you press `Enter` on plain text in the console while connected, FnQuake3 can either keep the legacy `cmd say` path or send the input more directly as quoted chat.
+
+- `con_sayRaw 0` keeps the legacy behavior and remains the default.
+- `con_sayRaw 1` sends plain console text through the raw quoted `say` path instead, which preserves the input line more closely than the tokenized `cmd say` route.
+- Slash commands are unaffected. This only changes the plain-text-in-console-to-chat path.
 
 ## Appearance
 
 The console background and accent colors can be customized directly, so you can keep the stock look or push it toward something cleaner and flatter.
 
+- `con_showClock 1` or `2`: Show the current system time in the console header area. When the version string is also enabled, the clock sits directly above it.
+- `con_showVersion 1`: Keep the console version string visible in the bottom-right header area.
+- `con_showVersion 0`: Hide the version string entirely.
 - `con_backgroundStyle 0`: Use the classic textured console background.
 - `con_backgroundStyle 1`: Use a flat shaded console background.
 - `con_backgroundColor`: Override the console background RGB color with `R G B` values from `0-255`.
 - `con_backgroundOpacity`: Set console background opacity from `0` to `1`.
 - `con_lineColor`: Set the separator line and scrollback marker color with `R G B` values from `0-255`.
-- `con_versionColor`: Set the version text color with `R G B` values from `0-255`.
+- `con_versionColor`: Set the version and clock text color with `R G B` values from `0-255`.
 - `con_fade 1`: Fade the console background, text, and accents in and out during open and close transitions.
 
 Legacy compatibility notes:

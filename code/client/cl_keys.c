@@ -383,6 +383,8 @@ Handles history and console scrollback
 ====================
 */
 static void Console_Key( int key ) {
+	char rawSayBuffer[ MAX_STRING_CHARS ];
+
 	// ctrl-L clears screen
 	if ( key == 'l' && keys[K_CTRL].down ) {
 		Cbuf_AddText( "clear\n" );
@@ -417,6 +419,9 @@ static void Console_Key( int key ) {
 			// other text will be chat messages
 			if ( !g_consoleField.buffer[0] ) {
 				return;	// empty lines just scroll the console without adding to history
+			} else if ( Con_UseRawSay() ) {
+				Com_sprintf( rawSayBuffer, sizeof( rawSayBuffer ), "say \"%s\"\n", g_consoleField.buffer );
+				CL_AddReliableCommand( rawSayBuffer, qfalse );
 			} else {
 				Cbuf_AddText( "cmd say " );
 				Cbuf_AddText( g_consoleField.buffer );
@@ -573,16 +578,6 @@ static void CL_KeyDownEvent( int key, unsigned time )
 		return;
 	}
 
-	// hardcoded screenshot key
-	if ( key == K_PRINT ) {
-		if ( keys[K_SHIFT].down ) {
-			Cbuf_ExecuteText( EXEC_APPEND, "screenshotBMP\n" );
-		} else {
-			Cbuf_ExecuteText( EXEC_APPEND, "screenshotBMP clipboard\n" );
-		}
-		return;
-	}
-
 	// keys can still be used for bound actions
 	if ( ( key < 128 || key == K_MOUSE1 ) && cls.state == CA_CINEMATIC && Key_GetCatcher() == 0 ) {
 		if ( Cvar_VariableIntegerValue( "com_cameraMode" ) == 0 ) {
@@ -689,11 +684,6 @@ static void CL_KeyUpEvent( int key, unsigned time )
 
 	// don't process key-up events for the console key
 	if ( key == K_CONSOLE || ( key == K_ESCAPE && keys[K_SHIFT].down ) ) {
-		return;
-	}
-
-	// hardcoded screenshot key
-	if ( key == K_PRINT ) {
 		return;
 	}
 

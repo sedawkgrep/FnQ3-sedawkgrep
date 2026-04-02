@@ -519,6 +519,7 @@ void Con_MouseEvent( int dx, int dy );
 qboolean Con_KeyEvent( int key, qboolean down );
 qboolean Con_InputKey( int key );
 void Con_CharEvent( int key );
+qboolean Con_UseRawSay( void );
 void Con_PageUp( int lines );
 void Con_PageDown( int lines );
 void Con_Top( void );

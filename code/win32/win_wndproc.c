@@ -43,29 +43,15 @@ WinKeyHook
 static LRESULT CALLBACK WinKeyHook( int code, WPARAM wParam, LPARAM lParam )
 {
 	PKBDLLHOOKSTRUCT key = (PKBDLLHOOKSTRUCT)lParam;
-	switch( wParam )
-	{
-	case WM_KEYDOWN:
-	case WM_SYSKEYDOWN:
-		if ( ( key->vkCode == VK_LWIN || key->vkCode == VK_RWIN ) && !(Key_GetCatcher() & KEYCATCH_CONSOLE) ) {
-			Sys_QueEvent( 0, SE_KEY, K_SUPER, qtrue, 0, NULL );
-			return 1;
-		}
-		if ( key->vkCode == VK_SNAPSHOT ) {
-			Sys_QueEvent( 0, SE_KEY, K_PRINT, qtrue, 0, NULL );
-			return 1;
-		}
-	case WM_KEYUP:
-	case WM_SYSKEYUP:
-		if ( ( key->vkCode == VK_LWIN || key->vkCode == VK_RWIN ) && !(Key_GetCatcher() & KEYCATCH_CONSOLE) ) {
-			Sys_QueEvent( 0, SE_KEY, K_SUPER, qfalse, 0, NULL );
-			return 1;
-		}
-		if ( key->vkCode == VK_SNAPSHOT ) {
-			Sys_QueEvent( 0, SE_KEY, K_PRINT, qfalse, 0, NULL );
-			return 1;
-		}
+
+	if ( code != HC_ACTION ) {
+		return CallNextHookEx( NULL, code, wParam, lParam );
 	}
+
+	if ( key->vkCode == VK_SNAPSHOT || key->vkCode == VK_LWIN || key->vkCode == VK_RWIN ) {
+		return CallNextHookEx( NULL, code, wParam, lParam );
+	}
+
 	return CallNextHookEx( NULL, code, wParam, lParam );
 }
 
@@ -605,7 +591,7 @@ LRESULT WINAPI MainWndProc( HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM lParam 
 
 		//MSH_MOUSEWHEEL = RegisterWindowMessage( TEXT( "MSWHEEL_ROLLMSG" ) ); 
 
-		WIN_EnableHook(); // for PrintScreen and Win* keys
+		WIN_EnableHook(); // installs Win32 low-level hook, pass-through for OS key handling
 
 		hWinEventHook = SetWinEventHook( EVENT_SYSTEM_SWITCHSTART, EVENT_SYSTEM_SWITCHSTART, NULL, WinEventProc, 
 			0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS );
@@ -938,12 +924,18 @@ LRESULT WINAPI MainWndProc( HWND hWnd, UINT uMsg, WPARAM  wParam, LPARAM lParam 
 			Cbuf_AddText( "vid_restart\n" );
 			return 0;
 		}
+		if ( wParam == VK_SNAPSHOT || wParam == VK_LWIN || wParam == VK_RWIN ) {
+			return DefWindowProc( hWnd, uMsg, wParam, lParam );
+		}
 		//Com_Printf( "^2k+^7 wParam:%08x lParam:%08x\n", wParam, lParam );
 		Sys_QueEvent( g_wv.sysMsgTime, SE_KEY, MapKey( wParam, lParam ), qtrue, 0, NULL );
 		break;
 
 	case WM_SYSKEYUP:
 	case WM_KEYUP:
+		if ( wParam == VK_SNAPSHOT || wParam == VK_LWIN || wParam == VK_RWIN ) {
+			return DefWindowProc( hWnd, uMsg, wParam, lParam );
+		}
 		//Com_Printf( "^5k-^7 wParam:%08x lParam:%08x\n", wParam, lParam );
 		Sys_QueEvent( g_wv.sysMsgTime, SE_KEY, MapKey( wParam, lParam ), qfalse, 0, NULL );
 		break;

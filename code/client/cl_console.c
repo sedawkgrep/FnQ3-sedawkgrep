@@ -124,7 +124,7 @@ extern  int         chat_playerNum;
 console_t	con;
 
 cvar_t		*con_conspeed;
-cvar_t		*con_autoclear;
+cvar_t		*con_autoClear;
 cvar_t		*con_notifytime;
 cvar_t		*con_scale;
 cvar_t		*con_scaleUniform;
@@ -135,6 +135,9 @@ static cvar_t	*con_backgroundOpacity;
 static cvar_t	*con_scrollSmooth;
 static cvar_t	*con_scrollSmoothSpeed;
 static cvar_t	*con_completionPopup;
+static cvar_t	*con_sayRaw;
+static cvar_t	*con_showClock;
+static cvar_t	*con_showVersion;
 static cvar_t	*con_lineColor;
 static cvar_t	*con_versionColor;
 static cvar_t	*con_fade;
@@ -1012,6 +1015,71 @@ static qboolean Con_CompletionPopupEnabled( void ) {
 }
 
 
+qboolean Con_UseRawSay( void ) {
+	return ( con_sayRaw && con_sayRaw->integer ) ? qtrue : qfalse;
+}
+
+
+static int Con_GetShowClockMode( void ) {
+	if ( !con_showClock ) {
+		return 0;
+	}
+
+	if ( con_showClock->integer < 0 ) {
+		return 0;
+	}
+
+	if ( con_showClock->integer > 2 ) {
+		return 2;
+	}
+
+	return con_showClock->integer;
+}
+
+
+static qboolean Con_ShowVersion( void ) {
+	return ( !con_showVersion || con_showVersion->integer ) ? qtrue : qfalse;
+}
+
+
+static int Con_GetFooterRows( void ) {
+	int rows = 2;
+
+	if ( Con_GetShowClockMode() && Con_ShowVersion() ) {
+		rows++;
+	}
+
+	return rows;
+}
+
+
+static qboolean Con_GetClockString( char *buffer, int bufferSize ) {
+	qtime_t now;
+	int mode = Con_GetShowClockMode();
+
+	if ( !buffer || bufferSize < 1 || !mode ) {
+		return qfalse;
+	}
+
+	Com_RealTime( &now );
+
+	if ( mode == 1 ) {
+		Com_sprintf( buffer, bufferSize, "%02d:%02d", now.tm_hour, now.tm_min );
+	} else {
+		int hour = now.tm_hour % 12;
+
+		if ( hour == 0 ) {
+			hour = 12;
+		}
+
+		Com_sprintf( buffer, bufferSize, "%d:%02d %s", hour, now.tm_min,
+			( now.tm_hour >= 12 ) ? "PM" : "AM" );
+	}
+
+	return qtrue;
+}
+
+
 static qboolean Con_HasActiveCompletionPopup( void ) {
 	return ( Con_CompletionPopupEnabled() &&
 		con.completionPopupVisible &&
@@ -1343,7 +1411,7 @@ static void Con_GetConsoleRect( float *x, float *y, float *w, float *h ) {
 static int Con_GetLogRowCount( void ) {
 	int rows;
 
-	rows = con.vislines / smallchar_height - 1;
+	rows = con.vislines / smallchar_height - Con_GetFooterRows() + 1;
 	if ( rows < 1 ) {
 		rows = 1;
 	}
@@ -1360,7 +1428,7 @@ static void Con_GetLogAreaRect( float *x, float *y, float *w, float *h ) {
 
 	Con_GetConsoleRect( &consoleX, &consoleY, &consoleW, &consoleH );
 	rows = Con_GetLogRowCount();
-	logBottom = consoleY + consoleH - smallchar_height * 2.0f;
+	logBottom = consoleY + consoleH - smallchar_height * Con_GetFooterRows();
 	logTop = logBottom - rows * smallchar_height;
 	if ( logTop < consoleY ) {
 		logTop = consoleY;
@@ -1383,9 +1451,10 @@ static void Con_GetLogAreaRect( float *x, float *y, float *w, float *h ) {
 
 static qboolean Con_GetInputAreaRect( float *x, float *y, float *w, float *h ) {
 	float consoleX, consoleY, consoleW, consoleH;
+	int footerRows = Con_GetFooterRows();
 
 	Con_GetConsoleRect( &consoleX, &consoleY, &consoleW, &consoleH );
-	if ( consoleW <= 0.0f || consoleH <= smallchar_height * 2.0f ) {
+	if ( consoleW <= 0.0f || consoleH <= smallchar_height * footerRows ) {
 		return qfalse;
 	}
 
@@ -1393,7 +1462,7 @@ static qboolean Con_GetInputAreaRect( float *x, float *y, float *w, float *h ) {
 		*x = consoleX + 2 * smallchar_width;
 	}
 	if ( y ) {
-		*y = consoleY + consoleH - smallchar_height * 2.0f;
+		*y = consoleY + consoleH - smallchar_height * footerRows;
 	}
 	if ( w ) {
 		*w = consoleW - 3 * smallchar_width;
@@ -2026,51 +2095,49 @@ static void Con_DrawInputDropCursor( field_t *edit, float x, float y, float alph
 }
 
 
-static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const vec4_t lineColor ) {
+static qboolean Con_GetCompletionPopupGeometry( float *popupX, float *popupY, float *popupW, float *popupH,
+	int *first, int *visibleCount ) {
 	float consoleX, consoleW;
-	float popupX, popupY;
-	float popupW, popupH;
-	int first;
-	int visibleCount;
+	float x, y;
+	float outPopupX, outPopupY;
+	float outPopupW, outPopupH;
+	int outFirst;
+	int outVisibleCount;
 	int maxChars;
 	int longest;
 	int i;
-	vec4_t backgroundColor;
-	vec4_t borderColor;
-	vec4_t selectionColor;
-	vec4_t textColor;
 
 	if ( !Con_CompletionPopupEnabled() ) {
 		con.completionPopupVisible = qfalse;
-		return;
+		return qfalse;
 	}
 
 	Con_RefreshCompletionState();
-	if ( con.completionCount < 1 || con.textDragging ) {
+	if ( con.completionCount < 1 || con.textDragging || con.focus != CON_FOCUS_INPUT ) {
 		con.completionPopupVisible = qfalse;
-		return;
+		return qfalse;
 	}
 	con.completionPopupVisible = qtrue;
 
-	visibleCount = con.completionCount;
-	if ( visibleCount > CON_COMPLETION_MAX_VISIBLE ) {
-		visibleCount = CON_COMPLETION_MAX_VISIBLE;
+	outVisibleCount = con.completionCount;
+	if ( outVisibleCount > CON_COMPLETION_MAX_VISIBLE ) {
+		outVisibleCount = CON_COMPLETION_MAX_VISIBLE;
 	}
 
-	first = 0;
-	if ( con.completionSelection >= visibleCount ) {
-		first = con.completionSelection - visibleCount + 1;
-		if ( first > con.completionCount - visibleCount ) {
-			first = con.completionCount - visibleCount;
+	outFirst = 0;
+	if ( con.completionSelection >= outVisibleCount ) {
+		outFirst = con.completionSelection - outVisibleCount + 1;
+		if ( outFirst > con.completionCount - outVisibleCount ) {
+			outFirst = con.completionCount - outVisibleCount;
 		}
 	}
-	if ( first < 0 ) {
-		first = 0;
+	if ( outFirst < 0 ) {
+		outFirst = 0;
 	}
 
 	longest = 0;
-	for ( i = 0; i < visibleCount; i++ ) {
-		int matchLen = strlen( con.completionMatches[ first + i ] );
+	for ( i = 0; i < outVisibleCount; i++ ) {
+		int matchLen = strlen( con.completionMatches[ outFirst + i ] );
 
 		if ( matchLen > longest ) {
 			longest = matchLen;
@@ -2089,19 +2156,92 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 		longest = maxChars;
 	}
 
-	popupW = ( longest + 2 ) * smallchar_width;
-	popupH = visibleCount * smallchar_height + 4.0f;
-	popupX = x;
-	if ( popupX + popupW > consoleX + consoleW - smallchar_width ) {
-		popupX = consoleX + consoleW - popupW - smallchar_width;
+	outPopupW = ( longest + 2 ) * smallchar_width;
+	outPopupH = outVisibleCount * smallchar_height + 4.0f;
+	x = con.xadjust + 2 * smallchar_width;
+	y = con.vislines - ( smallchar_height * Con_GetFooterRows() );
+	outPopupX = x;
+	if ( outPopupX + outPopupW > consoleX + consoleW - smallchar_width ) {
+		outPopupX = consoleX + consoleW - outPopupW - smallchar_width;
 	}
-	if ( popupX < consoleX + smallchar_width ) {
-		popupX = consoleX + smallchar_width;
+	if ( outPopupX < consoleX + smallchar_width ) {
+		outPopupX = consoleX + smallchar_width;
 	}
 
-	popupY = y - popupH - 4.0f;
-	if ( popupY < 0.0f ) {
-		popupY = 0.0f;
+	outPopupY = y - outPopupH - 4.0f;
+	if ( outPopupY < 0.0f ) {
+		outPopupY = 0.0f;
+	}
+
+	if ( popupX ) {
+		*popupX = outPopupX;
+	}
+	if ( popupY ) {
+		*popupY = outPopupY;
+	}
+	if ( popupW ) {
+		*popupW = outPopupW;
+	}
+	if ( popupH ) {
+		*popupH = outPopupH;
+	}
+	if ( first ) {
+		*first = outFirst;
+	}
+	if ( visibleCount ) {
+		*visibleCount = outVisibleCount;
+	}
+
+	return qtrue;
+}
+
+
+static qboolean Con_GetCompletionSelectionFromMouse( int *selection ) {
+	float popupX, popupY, popupW, popupH;
+	int first, visibleCount;
+	int rowIndex;
+
+	if ( !selection ||
+		!Con_GetCompletionPopupGeometry( &popupX, &popupY, &popupW, &popupH, &first, &visibleCount ) ) {
+		return qfalse;
+	}
+
+	if ( con.mouseX < popupX || con.mouseX > popupX + popupW ||
+		con.mouseY < popupY + 2.0f || con.mouseY >= popupY + 2.0f + visibleCount * smallchar_height ) {
+		return qfalse;
+	}
+
+	rowIndex = (int)( ( con.mouseY - ( popupY + 2.0f ) ) / smallchar_height );
+	if ( rowIndex < 0 || rowIndex >= visibleCount ) {
+		return qfalse;
+	}
+
+	*selection = first + rowIndex;
+	return qtrue;
+}
+
+
+static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const vec4_t lineColor ) {
+	float popupX, popupY;
+	float popupW, popupH;
+	int first;
+	int visibleCount;
+	int maxDrawChars;
+	int i;
+	vec4_t backgroundColor;
+	vec4_t borderColor;
+	vec4_t selectionColor;
+	vec4_t textColor;
+
+	(void)x;
+	(void)y;
+
+	if ( !Con_GetCompletionPopupGeometry( &popupX, &popupY, &popupW, &popupH, &first, &visibleCount ) ) {
+		return;
+	}
+	maxDrawChars = (int)( popupW / smallchar_width ) - 2;
+	if ( maxDrawChars < 1 ) {
+		maxDrawChars = 1;
 	}
 
 	backgroundColor[ 0 ] = 0.0f;
@@ -2129,8 +2269,8 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 		int drawLen = strlen( match );
 		int j;
 
-		if ( drawLen > longest ) {
-			drawLen = longest;
+		if ( drawLen > maxDrawChars ) {
+			drawLen = maxDrawChars;
 		}
 
 		if ( first + i == con.completionSelection ) {
@@ -2558,6 +2698,7 @@ qboolean Con_KeyEvent( int key, qboolean down ) {
 	float thumbY, thumbH;
 	float hitX, hitW;
 	float inputX, inputY, inputW, inputH;
+	int completionSelection;
 	int line, column;
 
 	if ( !( Key_GetCatcher() & KEYCATCH_CONSOLE ) ) {
@@ -2588,6 +2729,17 @@ qboolean Con_KeyEvent( int key, qboolean down ) {
 	}
 
 	Con_ClampMouseToConsole();
+
+	if ( key == K_MOUSE1 && Con_GetCompletionSelectionFromMouse( &completionSelection ) ) {
+		Con_ClearTextDragState();
+		con.scrollbarDragging = qfalse;
+		con.inputSelecting = qfalse;
+		con.logSelecting = qfalse;
+		con.completionSelection = completionSelection;
+		Con_ApplySelectedCompletion( 0 );
+		Con_DismissCompletionPopup();
+		return qtrue;
+	}
 
 	if ( key == K_MOUSE1 &&
 		Con_GetScrollbarGeometry( con.scrollbarHover, &trackX, &trackY, &trackW, &trackH, &thumbY, &thumbH, &hitX, &hitW ) &&
@@ -2723,7 +2875,7 @@ void Con_ToggleConsole_f( void ) {
 		return;
 	}
 
-	if ( con_autoclear->integer ) {
+	if ( con_autoClear->integer ) {
 		Field_Clear( &g_consoleField );
 	}
 
@@ -2956,8 +3108,11 @@ void Con_CheckResize( void )
 	qboolean scaleModified;
 	qboolean uniformModified;
 	qboolean extentsModified;
+	qboolean showClockModified;
+	qboolean showVersionModified;
 	qboolean sizeChanged;
 	qboolean widthChanged;
+	int		footerRows;
 
 	scale = con_scale ? con_scale->value : 1.0f;
 	if ( scale <= 0.0f ) {
@@ -2969,6 +3124,8 @@ void Con_CheckResize( void )
 	scaleModified = con_scale ? con_scale->modified : qfalse;
 	uniformModified = con_scaleUniform ? con_scaleUniform->modified : qfalse;
 	extentsModified = con_screenExtents ? con_screenExtents->modified : qfalse;
+	showClockModified = con_showClock ? con_showClock->modified : qfalse;
+	showVersionModified = con_showVersion ? con_showVersion->modified : qfalse;
 
 	charScale = scale * cls.con_factor;
 	if ( uniformScale ) {
@@ -3041,7 +3198,8 @@ void Con_CheckResize( void )
 		if ( width > MAX_CONSOLE_WIDTH )
 			width = MAX_CONSOLE_WIDTH;
 
-		vispage = (int)( contentHeight / ( smallchar_height * 2 ) ) - 1;
+		footerRows = Con_GetFooterRows();
+		vispage = (int)( contentHeight / ( smallchar_height * 2 ) ) - footerRows + 1;
 		if ( vispage < 1 ) {
 			vispage = 1;
 		}
@@ -3057,7 +3215,9 @@ void Con_CheckResize( void )
 		g_console_field_width = width;
 		g_consoleField.widthInChars = g_console_field_width;
 
-		if ( !widthChanged && con.vispage == vispage && !sizeChanged && !scaleModified && !uniformModified && !extentsModified ) {
+		if ( !widthChanged && con.vispage == vispage && !sizeChanged &&
+			!scaleModified && !uniformModified && !extentsModified &&
+			!showClockModified && !showVersionModified ) {
 			return;
 		}
 
@@ -3117,6 +3277,12 @@ done:
 	if ( con_screenExtents ) {
 		con_screenExtents->modified = qfalse;
 	}
+	if ( con_showClock ) {
+		con_showClock->modified = qfalse;
+	}
+	if ( con_showVersion ) {
+		con_showVersion->modified = qfalse;
+	}
 	if ( con.mouseInitialized ) {
 		Con_ClampMouseToConsole();
 	}
@@ -3157,8 +3323,8 @@ void Con_Init( void )
 	Cvar_SetDescription( con_conspeed, "Console opening/closing scroll speed." );
 	con_speedLegacy = Cvar_Get( "scr_conspeed", con_conspeed->string, CVAR_NOTABCOMPLETE );
 	Cvar_SetDescription( con_speedLegacy, "Deprecated alias for con_speed." );
-	con_autoclear = Cvar_Get("con_autoclear", "1", CVAR_ARCHIVE_ND);
-	Cvar_SetDescription( con_autoclear, "Enable/disable clearing console input text when console is closed." );
+	con_autoClear = Cvar_Get("con_autoClear", "1", CVAR_ARCHIVE_ND);
+	Cvar_SetDescription( con_autoClear, "Enable/disable clearing console input text when console is closed." );
 	con_scale = Cvar_Get( "con_scale", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scale, "0.5", "8", CV_FLOAT );
 	Cvar_SetDescription( con_scale, "Console font size scale." );
@@ -3180,7 +3346,7 @@ void Con_Init( void )
 		"Console background style:\n"
 		" 0 - legacy textured background\n"
 		" 1 - flat shaded background" );
-	con_backgroundColor = Cvar_Get( "con_backgroundColor", "", CVAR_ARCHIVE_ND );
+	con_backgroundColor = Cvar_Get( "con_backgroundColor", "24 0 0", CVAR_ARCHIVE_ND );
 	Cvar_SetDescription( con_backgroundColor, "Console background RGB color as R G B values from 0-255. Empty keeps the style default or legacy cl_conColor fallback." );
 	con_backgroundOpacity = Cvar_Get( "con_backgroundOpacity", "0.8", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_backgroundOpacity, "0", "1", CV_FLOAT );
@@ -3188,16 +3354,29 @@ void Con_Init( void )
 	con_scrollSmooth = Cvar_Get( "con_scrollSmooth", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scrollSmooth, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( con_scrollSmooth, "Smoothly animate console scrollback and new line movement." );
-	con_scrollSmoothSpeed = Cvar_Get( "con_scrollSmoothSpeed", "24", CVAR_ARCHIVE_ND );
+	con_scrollSmoothSpeed = Cvar_Get( "con_scrollSmoothSpeed", "72", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_scrollSmoothSpeed, "1", "240", CV_FLOAT );
 	Cvar_SetDescription( con_scrollSmoothSpeed, "Console smooth scrolling speed in lines per second." );
 	con_completionPopup = Cvar_Get( "con_completionPopup", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_completionPopup, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( con_completionPopup, "Show the live console completion popup while typing. Disable to keep classic Tab completion behavior." );
+	con_sayRaw = Cvar_Get( "con_sayRaw", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_sayRaw, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_sayRaw, "Use quoted raw console input for in-game plain-text say chat instead of legacy cmd say tokenization. Disabled by default." );
+	con_showClock = Cvar_Get( "con_showClock", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_showClock, "0", "2", CV_INTEGER );
+	Cvar_SetDescription( con_showClock,
+		"Show the current system time in the console header:\n"
+		" 0 - off\n"
+		" 1 - 24-hour clock\n"
+		" 2 - 12-hour AM/PM clock" );
+	con_showVersion = Cvar_Get( "con_showVersion", "1", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_showVersion, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_showVersion, "Show the console version string in the bottom-right header area." );
 	con_lineColor = Cvar_Get( "con_lineColor", "255 0 0", CVAR_ARCHIVE_ND );
 	Cvar_SetDescription( con_lineColor, "Console separator and scrollback marker RGB color as R G B values from 0-255." );
 	con_versionColor = Cvar_Get( "con_versionColor", "255 0 0", CVAR_ARCHIVE_ND );
-	Cvar_SetDescription( con_versionColor, "Console version text RGB color as R G B values from 0-255." );
+	Cvar_SetDescription( con_versionColor, "Console version and clock text RGB color as R G B values from 0-255." );
 	con_fade = Cvar_Get( "con_fade", "0", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_fade, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( con_fade, "Fade console background and text in and out while opening or closing the console." );
@@ -3468,7 +3647,7 @@ static void Con_DrawInput( float alphaScale, const vec4_t lineColor ) {
 		return;
 	}
 
-	y = con.vislines - ( smallchar_height * 2 );
+	y = con.vislines - ( smallchar_height * Con_GetFooterRows() );
 
 	color[ 0 ] = con.color[ 0 ];
 	color[ 1 ] = con.color[ 1 ];
@@ -3577,6 +3756,7 @@ static void Con_DrawSolidConsole( float frac ) {
 	short			*text;
 	int				row;
 	int				lines;
+	int				statusRows;
 	int				currentColorIndex;
 	int				colorIndex;
 	float			xf, yf, wf;
@@ -3586,6 +3766,8 @@ static void Con_DrawSolidConsole( float frac ) {
 	vec4_t			backgroundColor;
 	vec4_t			lineColor;
 	vec4_t			versionColor;
+	char			clockString[16];
+	qboolean		showVersion;
 
 	lines = cls.glconfig.vidHeight * frac;
 	if ( lines <= 0 )
@@ -3605,6 +3787,8 @@ static void Con_DrawSolidConsole( float frac ) {
 	}
 	yf = lines;
 	alphaScale = Con_GetFadeAlpha( frac );
+	statusRows = Con_GetFooterRows();
+	showVersion = Con_ShowVersion();
 	Con_GetBackgroundColor( backgroundColor );
 	Con_GetColorCvar( con_lineColor, g_color_table[ ColorIndex( COLOR_RED ) ], lineColor, qfalse );
 	Con_GetColorCvar( con_versionColor, lineColor, versionColor, qfalse );
@@ -3623,17 +3807,27 @@ static void Con_DrawSolidConsole( float frac ) {
 	Con_SetScaledColor( lineColor, alphaScale );
 	re.DrawStretchPic( xf, yf, wf, 2, 0, 0, 1, 1, cls.whiteShader );
 
-	// draw the version number
-	Con_SetScaledColor( versionColor, alphaScale );
-	SCR_DrawSmallString( xf + wf - ( ARRAY_LEN( Q3_VERSION ) - 1 ) * smallchar_width,
-		lines - smallchar_height, Q3_VERSION, ARRAY_LEN( Q3_VERSION ) - 1 );
+	if ( showVersion ) {
+		Con_SetScaledColor( versionColor, alphaScale );
+		SCR_DrawSmallString( xf + wf - ( ARRAY_LEN( Q3_VERSION ) - 1 ) * smallchar_width,
+			lines - smallchar_height, Q3_VERSION, ARRAY_LEN( Q3_VERSION ) - 1 );
+	}
+
+	if ( Con_GetClockString( clockString, sizeof( clockString ) ) ) {
+		const int clockLen = strlen( clockString );
+		const int clockRow = showVersion ? 2 : 1;
+
+		Con_SetScaledColor( versionColor, alphaScale );
+		SCR_DrawSmallString( xf + wf - clockLen * smallchar_width,
+			lines - smallchar_height * clockRow, clockString, clockLen );
+	}
 
 	// draw the text
 	con.vislines = lines;
 	Con_UpdateScrollbarHover();
 	rows = Con_GetLogRowCount();	// rows of text to draw
 
-	markerY = lines - (smallchar_height * 3);
+	markerY = lines - ( smallchar_height * ( statusRows + 1 ) );
 	drawY = markerY;
 	row = (int)con.displayLine;
 	if ( (float)row < con.displayLine ) {

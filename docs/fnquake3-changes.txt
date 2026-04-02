@@ -153,7 +153,7 @@
 * Vulkan: use minimal VkApplicationInfo at instance creation
 * Vulkan: disable anisotropy for nearest-sampling modes
 * win32: show/hide mouse cursor only if it has been not suppressed by OS
-* Added con_autoclear cvar
+* Added con_autoClear cvar
 * Added \kicknum, \kickall, and 'kickbots commands, patch by Ensiform
 * Always keep bots, even with \devmap
 * Allow 8x multisampling in traditional (non-framebuffer) MSAA
