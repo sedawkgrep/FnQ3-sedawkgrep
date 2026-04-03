@@ -103,7 +103,7 @@ def channel_metadata(
         version_label = str(meta["version"])
         release_title = f"{meta['project_name']} {meta['version']}"
     else:
-        release_tag = str(meta["nightly_tag"])
+        release_tag = f"{meta['nightly_tag']}-{meta['version']}-{date_slug}-{short_commit}"
         archive_prefix = f"{meta['artifact_prefix']}-nightly-{meta['version']}-{date_slug}-{short_commit}"
         version_label = f"{meta['version']}-nightly.{date_slug}+{short_commit}"
         release_title = f"{meta['project_name']} Nightly {iso_date} ({meta['version']})"
