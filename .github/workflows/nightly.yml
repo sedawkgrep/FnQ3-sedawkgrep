@@ -339,5 +339,4 @@ jobs:
             .install/SHA256SUMS.txt \
             --target "${{ needs.prepare.outputs.head_commit }}" \
             --title "${FNQ3_RELEASE_TITLE}" \
-            --notes-file .tmp/nightly-release-notes.md \
-            --prerelease
+            --notes-file .tmp/nightly-release-notes.md
