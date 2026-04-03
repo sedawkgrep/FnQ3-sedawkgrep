@@ -149,7 +149,7 @@ jobs:
           mkdir bin
 
           msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3.ded${{ matrix.suffix }}.exe bin\fnquake3.ded${{ matrix.suffix }}.exe
+          copy code\win32\msvc2017\output\fnquake3.ded.exe bin\fnquake3.ded${{ matrix.suffix }}.exe
           msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
 
           msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
@@ -161,7 +161,7 @@ jobs:
           msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
 
           msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3${{ matrix.suffix }}.exe bin\fnquake3${{ matrix.suffix }}.exe
+          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3${{ matrix.suffix }}.exe
           msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
 
       - uses: actions/upload-artifact@v4
