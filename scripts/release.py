@@ -14,11 +14,9 @@ from fnq3_meta import ROOT, channel_metadata, package_archive_name
 
 
 DEFAULT_DOCS = [
-    ROOT / "README.md",
-    ROOT / "BUILD.md",
-    ROOT / "LICENSE",
-    ROOT / "docs" / "TECHNICAL.md",
-    ROOT / ".install" / "README.html",
+    (ROOT / "LICENSE", Path("LICENSE")),
+    (ROOT / "docs" / "fnquake3" / "TECHNICAL.md", Path("docs") / "fnquake3" / "TECHNICAL.md"),
+    (ROOT / ".install" / "README.html", Path("README.html")),
 ]
 
 
@@ -53,11 +51,10 @@ def copy_tree_contents(source: Path, target: Path) -> None:
 
 
 def copy_docs(stage_root: Path) -> None:
-    for doc in DEFAULT_DOCS:
-        relative = doc.relative_to(ROOT)
-        destination = stage_root / relative
+    for source, dest_relative in DEFAULT_DOCS:
+        destination = stage_root / dest_relative
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(doc, destination)
+        shutil.copy2(source, destination)
 
 
 def build_archives(args: argparse.Namespace) -> dict[str, object]:

@@ -97,12 +97,9 @@ jobs:
         run: |
           if not exist bin mkdir bin
 
-          make release ARCH=${{ matrix.arch }} USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
-          copy build\release-mingw32-${{ matrix.arch }}\fnquake3-vulkan*.exe bin\
-
-          make clean ARCH=${{ matrix.arch }}
-          make release ARCH=${{ matrix.arch }} USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+          make release ARCH=${{ matrix.arch }} USE_SDL=0 USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1
           copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.exe bin\
+          copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.dll bin\
 
       - uses: actions/upload-artifact@v4
         with:
@@ -125,15 +122,18 @@ jobs:
             platform: ARM64
             suffix: .arm64
             pkg_suffix: arm64
+            rend_arch: arm64
 
           - arch: x86
             platform: Win32
             pkg_suffix: x86
+            rend_arch: x86
 
           - arch: x64
             platform: x64
             suffix: .x64
             pkg_suffix: x86_64
+            rend_arch: x86_64
     steps:
       - uses: microsoft/setup-msbuild@v2
 
@@ -153,15 +153,15 @@ jobs:
           msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
 
           msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
-          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3${{ matrix.suffix }}.exe
+          copy code\win32\msvc2017\output\fnquake3_opengl_${{ matrix.rend_arch }}.dll bin\
           msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
-          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
 
           msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
-          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3-vulkan${{ matrix.suffix }}.exe
+          copy code\win32\msvc2017\output\fnquake3_vulkan_${{ matrix.rend_arch }}.dll bin\
           msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
+
+          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
+          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3${{ matrix.suffix }}.exe
           msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
 
       - uses: actions/upload-artifact@v4
@@ -209,9 +209,7 @@ jobs:
 
       - name: Build
         run: |
-          make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=gcc DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
-          make clean ARCH=${{ matrix.arch }}
-          make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=gcc DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+          make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=gcc DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1
 
       - uses: actions/upload-artifact@v4
         with:
@@ -241,9 +239,7 @@ jobs:
 
       - name: Build
         run: |
-          make install -j$(nproc) ARCH=aarch64 COMPILE_ARCH=aarch64 CC=gcc DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0
-          make clean ARCH=aarch64
-          make install -j$(nproc) ARCH=aarch64 COMPILE_ARCH=aarch64 CC=gcc DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl
+          make install -j$(nproc) ARCH=aarch64 COMPILE_ARCH=aarch64 CC=gcc DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1
 
       - uses: actions/upload-artifact@v4
         with:
@@ -274,9 +270,7 @@ jobs:
 
       - name: Build
         run: |
-          gmake install -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=clang DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=vulkan CNAME=fnquake3-vulkan BUILD_SERVER=0 STRIP=echo
-          gmake clean ARCH=${{ matrix.arch }}
-          gmake install -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=clang DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=0 RENDERER_DEFAULT=opengl STRIP=echo
+          gmake install -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=clang DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1 STRIP=echo
 
       - uses: actions/upload-artifact@v4
         with:
@@ -327,12 +321,10 @@ jobs:
             "${FROM_ARGS[@]}" \
             --output .tmp/nightly-release-notes.md
 
-      - name: Recreate nightly release
+      - name: Create nightly release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete "${FNQ3_RELEASE_TAG}" --cleanup-tag --yes || true
-          git push origin ":refs/tags/${FNQ3_RELEASE_TAG}" || true
           gh release create "${FNQ3_RELEASE_TAG}" \
             .install/packages/*.zip \
             .install/release-manifest.json \

@@ -6,7 +6,7 @@ Fappin' Quake III, shortened to FnQuake3 or FnQ3.
 
 <p>
   <a href="BUILD.md"><img alt="Build Guide" src="https://img.shields.io/badge/Build-Guide-1f2937?style=for-the-badge"></a>
-  <a href="docs/TECHNICAL.md"><img alt="Technical Notes" src="https://img.shields.io/badge/Technical-Notes-0f766e?style=for-the-badge"></a>
+  <a href="docs/fnquake3/TECHNICAL.md"><img alt="Technical Notes" src="https://img.shields.io/badge/Technical-Notes-0f766e?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-GPL--2.0-c2410c?style=for-the-badge"></a>
 </p>
 
@@ -53,7 +53,7 @@ FnQuake3 is a modernized Quake III Arena engine project built around a simple go
 - [Visuals Guide](docs/VISUALS.md) for player highlighting and the current visual presentation controls.
 - [Aspect Correction Guide](docs/ASPECT_CORRECTION.md) for HUD, menu, and cinematic presentation options.
 - [Console Guide](docs/CONSOLE.md) for console scaling, interaction, completion, and appearance.
-- [Technical Notes](docs/TECHNICAL.md) for maintainers, release flow, and repo conventions.
+- [Technical Notes](docs/fnquake3/TECHNICAL.md) for maintainers, release flow, and repo conventions.
 - [Agent Guide](AGENTS.md) for automation rules and local repository references.
 
 ## Project Priorities
