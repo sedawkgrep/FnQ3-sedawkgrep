@@ -17,7 +17,6 @@ DEFAULT_DOCS = [
     ROOT / "README.md",
     ROOT / "BUILD.md",
     ROOT / "LICENSE",
-    ROOT / "COPYING.txt",
     ROOT / "docs" / "TECHNICAL.md",
     ROOT / ".install" / "README.html",
 ]
