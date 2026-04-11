@@ -86,7 +86,8 @@ static void R_IssueRenderCommands( void ) {
 	// clear it out, in case this is a sync and not a buffer flip
 	cmdList->used = 0;
 
-	if ( backEnd.screenshotMask == 0 ) {
+	if ( backEnd.screenshotMask == 0 && !backEnd.levelshotPending &&
+		!backEnd.screenshotCubeActive && !backEnd.screenshotCubeFrontPending ) {
 		if ( ri.CL_IsMinimized() )
 			return; // skip backend when minimized
 		if ( backEnd.throttle )
@@ -174,6 +175,25 @@ void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 	cmd->refdef = tr.refdef;
 	cmd->viewParms = tr.viewParms;
+}
+
+void R_AddScreenshotCmd( int x, int y, int width, int height, int format, const char *fileName, qboolean silent, qboolean allowWatermark ) {
+	screenshotCommand_t *cmd;
+
+	cmd = R_GetCommandBuffer( sizeof( *cmd ) );
+	if ( !cmd ) {
+		return;
+	}
+
+	cmd->commandId = RC_SCREENSHOT;
+	cmd->x = x;
+	cmd->y = y;
+	cmd->width = width;
+	cmd->height = height;
+	cmd->format = format;
+	cmd->silent = silent;
+	cmd->allowWatermark = allowWatermark;
+	Q_strncpyz( cmd->fileName, fileName, sizeof( cmd->fileName ) );
 }
 
 

@@ -77,7 +77,7 @@
     <LinkIncremental>true</LinkIncremental>
     <EmbedManifest>false</EmbedManifest>
     <TargetName>fnquake3-debug</TargetName>
-    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(ProjectDir)..\..\openal\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>.\output\</OutDir>
@@ -85,7 +85,7 @@
     <LinkIncremental>true</LinkIncremental>
     <EmbedManifest>false</EmbedManifest>
     <TargetName>fnquake3-debug.x64</TargetName>
-    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(ProjectDir)..\..\openal\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <LinkIncremental>true</LinkIncremental>
@@ -93,28 +93,28 @@
     <OutDir>.\output\</OutDir>
     <IntDir>.\build\$(ProjectName)_$(Configuration)_$(PlatformTarget)\</IntDir>
     <TargetName>fnquake3-debug.arm64</TargetName>
-    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(ProjectDir)..\..\openal\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <OutDir>.\output\</OutDir>
     <IntDir>.\build\$(ProjectName)_$(Configuration)_$(PlatformTarget)\</IntDir>
     <EmbedManifest>false</EmbedManifest>
     <TargetName>fnquake3</TargetName>
-    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(ProjectDir)..\..\openal\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>.\output\</OutDir>
     <IntDir>.\build\$(ProjectName)_$(Configuration)_$(PlatformTarget)\</IntDir>
     <EmbedManifest>false</EmbedManifest>
     <TargetName>fnquake3.x64</TargetName>
-    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(ProjectDir)..\..\openal\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <EmbedManifest>false</EmbedManifest>
     <OutDir>.\output\</OutDir>
     <IntDir>.\build\$(ProjectName)_$(Configuration)_$(PlatformTarget)\</IntDir>
     <TargetName>fnquake3.arm64</TargetName>
-    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)..\..\libogg\include;$(ProjectDir)..\..\libvorbis\include;$(ProjectDir)..\..\openal\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -128,6 +128,7 @@
       <Optimization>Disabled</Optimization>
       <FloatingPointExceptions>true</FloatingPointExceptions>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile />
@@ -152,6 +153,7 @@
       <BrowseInformation>true</BrowseInformation>
       <WarningLevel>Level3</WarningLevel>
       <FloatingPointExceptions>true</FloatingPointExceptions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile />
@@ -176,6 +178,7 @@
       <BrowseInformationFile>$(IntDir)</BrowseInformationFile>
       <WarningLevel>Level3</WarningLevel>
       <FloatingPointExceptions>true</FloatingPointExceptions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile />
@@ -197,6 +200,7 @@
       <WarningLevel>Level4</WarningLevel>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
@@ -223,6 +227,7 @@
       <WarningLevel>Level4</WarningLevel>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <AssemblerOutput>AssemblyAndSourceCode</AssemblerOutput>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
@@ -248,6 +253,7 @@
       <PreprocessorDefinitions>WIN32;_WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;USE_SKIPIDLOGO;USE_OPENGL_API;USE_VULKAN_API;USE_OGG_VORBIS;USE_RENDERER_DLOPEN;RENDERER_PREFIX="fnquake3";RENDERER_DEFAULT=opengl;$(UseWASAPI);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>Level4</WarningLevel>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
@@ -267,6 +273,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\audio\AudioSystem.cpp" />
     <ClCompile Include="..\..\client\cl_avi.c" />
     <ClCompile Include="..\..\client\cl_cgame.c" />
     <ClCompile Include="..\..\client\cl_hud.c" />

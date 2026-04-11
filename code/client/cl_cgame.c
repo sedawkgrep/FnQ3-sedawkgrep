@@ -1079,6 +1079,17 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.AddAdditiveLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
 		return 0;
 	case CG_R_RENDERSCENE:
+		if ( cl_captureActive && cl_captureActive->integer &&
+			r_levelshotHideViewWeapon && r_levelshotHideViewWeapon->integer ) {
+			refdef_t captureRefdef;
+
+			captureRefdef = *(const refdef_t *)VMA(1);
+			captureRefdef.rdflags |= RDF_NOFIRSTPERSON;
+			CL_FlushEnemyHighlightRefEntities( &captureRefdef );
+			re.RenderScene( &captureRefdef );
+			return 0;
+		}
+
 		CL_FlushEnemyHighlightRefEntities( VMA(1) );
 		re.RenderScene( VMA(1) );
 		return 0;
@@ -1426,7 +1437,7 @@ static void CL_AdjustTimeDelta( void ) {
 		return;
 	}
 
-	newDelta = cl.snap.serverTime - cls.realtime;
+	newDelta = cl.snap.serverTime - cls.gametime;
 	deltaDelta = abs( newDelta - cl.serverTimeDelta );
 
 	if ( deltaDelta > RESET_TIME ) {
@@ -1447,8 +1458,8 @@ static void CL_AdjustTimeDelta( void ) {
 
 		// if any of the frames between this and the previous snapshot
 		// had to be extrapolated, nudge our sense of time back a little
-		// the granularity of +1 / -2 is too high for timescale modified frametimes
-		if ( com_timescale->value == 0 || com_timescale->value == 1 ) {
+		// the granularity of +1 / -2 is too high for timescale-modified world frames
+		if ( com_timescale->value == 1 ) {
 			if ( cl.extrapolatedSnapshot ) {
 				cl.extrapolatedSnapshot = qfalse;
 				cl.serverTimeDelta -= 2;
@@ -1481,7 +1492,7 @@ static void CL_FirstSnapshot( void ) {
 	CL_ResetOldGame();
 
 	// set the timedelta so we are exactly on this first frame
-	cl.serverTimeDelta = cl.snap.serverTime - cls.realtime;
+	cl.serverTimeDelta = cl.snap.serverTime - cls.gametime;
 	cl.oldServerTime = cl.snap.serverTime;
 
 	clc.timeDemoBaseTime = cl.snap.serverTime;
@@ -1612,12 +1623,12 @@ void CL_SetCGameTime( void ) {
 	demoFreezed = clc.demoplaying && com_timescale->value == 0.0f;
 	if ( demoFreezed ) {
 		// \timescale 0 is used to lock a demo in place for single frame advances
-		cl.serverTimeDelta -= cls.frametime;
+		cl.serverTimeDelta -= cls.gameFrametime;
 	} else {
 		// cl_timeNudge is a user adjustable cvar that allows more
 		// or less latency to be added in the interest of better
 		// smoothness or better responsiveness.
-		cl.serverTime = cls.realtime + cl.serverTimeDelta - CL_TimeNudge();
+		cl.serverTime = cls.gametime + cl.serverTimeDelta - CL_TimeNudge();
 
 		// guarantee that time will never flow backwards, even if
 		// serverTimeDelta made an adjustment or cl_timeNudge was changed
@@ -1628,8 +1639,8 @@ void CL_SetCGameTime( void ) {
 
 		// note if we are almost past the latest frame (without timeNudge),
 		// so we will try and adjust back a bit when the next snapshot arrives
-		//if ( cls.realtime + cl.serverTimeDelta >= cl.snap.serverTime - 5 ) {
-		if ( cls.realtime + cl.serverTimeDelta - cl.snap.serverTime >= -5 ) {
+		//if ( cls.gametime + cl.serverTimeDelta >= cl.snap.serverTime - 5 ) {
+		if ( cls.gametime + cl.serverTimeDelta - cl.snap.serverTime >= -5 ) {
 			cl.extrapolatedSnapshot = qtrue;
 		}
 	}

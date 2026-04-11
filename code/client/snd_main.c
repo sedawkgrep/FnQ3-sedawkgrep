@@ -31,6 +31,9 @@ cvar_t *s_musicVolume;
 cvar_t *s_doppler;
 cvar_t *s_muteWhenMinimized;
 cvar_t *s_muteWhenUnfocused;
+cvar_t *s_backend;
+cvar_t *s_backendActive;
+cvar_t *s_alDevice;
 
 static soundInterface_t si;
 
@@ -323,6 +326,30 @@ static void S_SoundList( void )
 	}
 }
 
+qboolean S_GetSpatialAudioDebugInfo( spatialAudioDebugInfo_t *info )
+{
+	if ( info ) {
+		Com_Memset( info, 0, sizeof( *info ) );
+	}
+
+	if ( si.GetSpatialDebugInfo ) {
+		return si.GetSpatialDebugInfo( info );
+	}
+
+	return qfalse;
+}
+
+static void S_AlDebugDump_f( void )
+{
+	if ( si.DumpSpatialDebug ) {
+		si.DumpSpatialDebug();
+		return;
+	}
+
+	Com_Printf( "Spatial audio debug dump unavailable for backend '%s'\n",
+		( s_backendActive != NULL ) ? s_backendActive->string : "none" );
+}
+
 //=============================================================================
 
 /*
@@ -425,6 +452,17 @@ void S_Init( void )
 	s_muteWhenMinimized = Cvar_Get( "s_muteWhenMinimized", "1", CVAR_ARCHIVE );
 	Cvar_CheckRange( s_muteWhenMinimized, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( s_muteWhenMinimized, "Mutes all audio while game is minimized." );
+	s_backend = Cvar_Get( "s_backend", "openal", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	Cvar_SetDescription( s_backend, "Selects the sound backend to initialize.\n"
+		"Available backends:\n"
+		"  " S_COLOR_CYAN "openal" S_COLOR_WHITE " - default client backend with OpenAL spatial audio\n"
+		"  " S_COLOR_CYAN "legacy" S_COLOR_WHITE " - original software mixer and platform device fallback\n" );
+	s_backendActive = Cvar_Get( "s_backendActive", "none", CVAR_ROM );
+	Cvar_SetDescription( s_backendActive, "Reports the currently active sound backend." );
+	s_alDevice = Cvar_Get( "s_alDevice", "", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	Cvar_SetDescription( s_alDevice, "Selects the OpenAL playback device when s_backend is set to openal.\n"
+		"Leave blank to use the system default device." );
+	Cvar_Set( "s_backendActive", "none" );
 
 	cv = Cvar_Get( "s_initsound", "1", 0 );
 	Cvar_SetDescription( cv, "Whether or not to startup the sound system." );
@@ -440,9 +478,24 @@ void S_Init( void )
 		Cmd_AddCommand( "s_list", S_SoundList );
 		Cmd_AddCommand( "s_stop", S_StopAllSounds );
 		Cmd_AddCommand( "s_info", S_SoundInfo );
+		Cmd_AddCommand( "s_alDebugDump", S_AlDebugDump_f );
+
+		if ( !started && !Q_stricmp( s_backend->string, "openal" ) ) {
+			started = S_OpenAL_Init( &si );
+			if ( started ) {
+				Cvar_Set( "s_backendActive", "openal" );
+			} else {
+				Com_Printf( S_COLOR_YELLOW "WARNING: OpenAL backend failed to initialize, falling back to legacy backend.\n" );
+			}
+		} else if ( !started && Q_stricmp( s_backend->string, "legacy" ) != 0 ) {
+			Com_Printf( S_COLOR_YELLOW "WARNING: unknown s_backend '%s', falling back to legacy backend.\n", s_backend->string );
+		}
 
 		if ( !started ) {
 			started = S_Base_Init( &si );
+			if ( started ) {
+				Cvar_Set( "s_backendActive", "legacy" );
+			}
 		}
 
 		if ( started ) {
@@ -453,6 +506,7 @@ void S_Init( void )
 			S_SoundInfo();
 			Com_Printf( "Sound initialization successful.\n" );
 		} else {
+			Cvar_Set( "s_backendActive", "none" );
 			Com_Printf( "Sound initialization failed.\n" );
 		}
 	}
@@ -477,6 +531,7 @@ void S_Shutdown( void )
 	}
 
 	Com_Memset( &si, 0, sizeof( soundInterface_t ) );
+	Cvar_Set( "s_backendActive", "none" );
 
 	Cmd_RemoveCommand( "play" );
 	Cmd_RemoveCommand( "music");
@@ -484,6 +539,7 @@ void S_Shutdown( void )
 	Cmd_RemoveCommand( "s_list" );
 	Cmd_RemoveCommand( "s_stop" );
 	Cmd_RemoveCommand( "s_info" );
+	Cmd_RemoveCommand( "s_alDebugDump" );
 
 	S_CodecShutdown();
 

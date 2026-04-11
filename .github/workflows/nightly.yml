@@ -100,6 +100,7 @@ jobs:
           make release ARCH=${{ matrix.arch }} USE_SDL=0 USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1
           copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.exe bin\
           copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.dll bin\
+          if exist build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll copy build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll bin\
 
       - uses: actions/upload-artifact@v4
         with:
@@ -123,17 +124,20 @@ jobs:
             suffix: .arm64
             pkg_suffix: arm64
             rend_arch: arm64
+            openal_dir: none
 
           - arch: x86
             platform: Win32
             pkg_suffix: x86
             rend_arch: x86
+            openal_dir: x86
 
           - arch: x64
             platform: x64
             suffix: .x64
             pkg_suffix: x86_64
             rend_arch: x86_64
+            openal_dir: x64
     steps:
       - uses: microsoft/setup-msbuild@v2
 
@@ -162,6 +166,7 @@ jobs:
 
           msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
           copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3${{ matrix.suffix }}.exe
+          if exist code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll copy code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll bin\
           msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
 
       - uses: actions/upload-artifact@v4
@@ -194,10 +199,10 @@ jobs:
           if [ ${{ matrix.arch }} == "x86" ]; then
             sudo dpkg --add-architecture i386
             sudo apt-get -qq update
-            sudo apt-get -y install gcc-multilib libcurl4-openssl-dev:i386 mesa-common-dev:i386 libxxf86dga-dev:i386 libxrandr-dev:i386 libxxf86vm-dev:i386 libasound2-dev:i386
+            sudo apt-get -y install gcc-multilib g++-multilib libcurl4-openssl-dev:i386 mesa-common-dev:i386 libxxf86dga-dev:i386 libxrandr-dev:i386 libxxf86vm-dev:i386 libasound2-dev:i386 libopenal-dev:i386
           else
             sudo apt-get -qq update
-            sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev
+            sudo apt-get -y install g++ libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev libopenal-dev
           fi
 
       - uses: actions/checkout@v4
@@ -228,7 +233,7 @@ jobs:
         run: |
           sudo apt-get -qq update
           sudo apt-get install -y make gcc g++
-          sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev
+          sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev libopenal-dev
 
       - uses: actions/checkout@v4
         with:

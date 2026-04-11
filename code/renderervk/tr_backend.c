@@ -1733,10 +1733,16 @@ static const void *RB_SwapBuffers( const void *data ) {
 #endif
 
 #ifdef USE_VULKAN
-	if ( backEnd.screenshotMask && vk.cmd->waitForFence ) {
+	if ( ( backEnd.screenshotMask || backEnd.levelshotPending ) && vk.cmd->waitForFence ) {
 #else
-	if ( backEnd.screenshotMask && tr.frameCount > 1 ) {
+	if ( ( backEnd.screenshotMask || backEnd.levelshotPending ) && tr.frameCount > 1 ) {
 #endif
+		if ( backEnd.screenshotMask & SCREENSHOT_PNG && backEnd.screenshotPNG[0] ) {
+			RB_TakeScreenshotPNG( 0, 0, gls.captureWidth, gls.captureHeight, backEnd.screenshotPNG );
+			if ( !backEnd.screenShotPNGsilent ) {
+				ri.Printf( PRINT_ALL, "Wrote %s\n", backEnd.screenshotPNG );
+			}
+		}
 		if ( backEnd.screenshotMask & SCREENSHOT_TGA && backEnd.screenshotTGA[0] ) {
 			RB_TakeScreenshot( 0, 0, gls.captureWidth, gls.captureHeight, backEnd.screenshotTGA );
 			if ( !backEnd.screenShotTGAsilent ) {
@@ -1758,11 +1764,20 @@ static const void *RB_SwapBuffers( const void *data ) {
 		if ( backEnd.screenshotMask & SCREENSHOT_AVI ) {
 			RB_TakeVideoFrameCmd( &backEnd.vcmd );
 		}
+		if ( backEnd.levelshotPending ) {
+			RB_TakeLevelShot();
+			backEnd.levelshotPending = qfalse;
+		}
 
+		backEnd.screenshotPNG[0] = '\0';
 		backEnd.screenshotJPG[0] = '\0';
 		backEnd.screenshotTGA[0] = '\0';
 		backEnd.screenshotBMP[0] = '\0';
 		backEnd.screenshotMask = 0;
+
+		if ( !backEnd.levelshotPending ) {
+			ri.Cvar_Set( "cl_captureActive", "0" );
+		}
 	}
 
 #ifdef USE_VULKAN

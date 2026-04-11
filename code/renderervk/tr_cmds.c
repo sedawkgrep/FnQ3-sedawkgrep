@@ -85,7 +85,7 @@ static void R_IssueRenderCommands( void ) {
 	// clear it out, in case this is a sync and not a buffer flip
 	cmdList->used = 0;
 
-	if ( backEnd.screenshotMask == 0 ) {
+	if ( backEnd.screenshotMask == 0 && !backEnd.levelshotPending ) {
 		if ( ri.CL_IsMinimized() )
 			return; // skip backend when minimized
 		if ( backEnd.throttle )
@@ -94,6 +94,8 @@ static void R_IssueRenderCommands( void ) {
 #ifdef USE_VULKAN
 		if ( ri.CL_IsMinimized() && !RE_CanMinimize() ) {
 			backEnd.screenshotMask = 0;
+			backEnd.levelshotPending = qfalse;
+			ri.Cvar_Set( "cl_captureActive", "0" );
 			return;
 		}
 #endif

@@ -1112,11 +1112,12 @@ typedef struct videoFrameCommand_s {
 } videoFrameCommand_t;
 
 enum {
-	SCREENSHOT_TGA = 1<<0,
-	SCREENSHOT_JPG = 1<<1,
-	SCREENSHOT_BMP = 1<<2,
-	SCREENSHOT_BMP_CLIPBOARD = 1<<3,
-	SCREENSHOT_AVI = 1<<4 // take video frame
+	SCREENSHOT_PNG = 1<<0,
+	SCREENSHOT_TGA = 1<<1,
+	SCREENSHOT_JPG = 1<<2,
+	SCREENSHOT_BMP = 1<<3,
+	SCREENSHOT_BMP_CLIPBOARD = 1<<4,
+	SCREENSHOT_AVI = 1<<5 // take video frame
 };
 
 // all state modified by the back end is separated
@@ -1135,10 +1136,13 @@ typedef struct {
 	qboolean	doneSurfaces;   // done any 3d surfaces already
 	trRefEntity_t	entity2D;	// currentEntity will point at this when doing 2D rendering
 
-	int		screenshotMask;		// tga | jpg | bmp
+	int		screenshotMask;		// png | tga | jpg | bmp
+	char	screenshotPNG[ MAX_OSPATH ];
 	char	screenshotTGA[ MAX_OSPATH ];
 	char	screenshotJPG[ MAX_OSPATH ];
 	char	screenshotBMP[ MAX_OSPATH ];
+	qboolean screenShotPNGsilent;
+	qboolean levelshotPending;
 	qboolean screenShotTGAsilent;
 	qboolean screenShotJPGsilent;
 	qboolean screenShotBMPsilent;
@@ -1974,9 +1978,11 @@ extern	int		max_polyverts;
 extern	backEndData_t	*backEndData;
 
 void RB_ExecuteRenderCommands( const void *data );
+void RB_TakeScreenshotPNG( int x, int y, int width, int height, const char *fileName );
 void RB_TakeScreenshot( int x, int y, int width, int height, const char *fileName );
 void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fileName );
 void RB_TakeScreenshotBMP( int x, int y, int width, int height, const char *fileName, int clipboard );
+void RB_TakeLevelShot( void );
 
 void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs );
 

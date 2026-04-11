@@ -224,6 +224,7 @@ BLIBDIR=$(MOUNT_DIR)/botlib
 JPDIR=$(MOUNT_DIR)/libjpeg
 OGGDIR=$(MOUNT_DIR)/libogg
 VORBISDIR=$(MOUNT_DIR)/libvorbis
+AUDIR=$(MOUNT_DIR)/audio
 
 bin_path=$(shell which $(1) 2> /dev/null)
 
@@ -330,6 +331,8 @@ ifeq ($(USE_LOCAL_HEADERS),1)
   BASE_CFLAGS += -DUSE_LOCAL_HEADERS=1
 endif
 
+BASE_CFLAGS += -I$(MOUNT_DIR)/openal/include
+
 ifeq ($(USE_SDL),1)
   BASE_CFLAGS += -DSDL_FUNCTION_POINTER_IS_VOID_POINTER=1
   BASE_CFLAGS += -DUSE_SDL_SYSCON=1
@@ -394,6 +397,11 @@ ifdef MINGW
          $(call bin_path, $(MINGW_PREFIX)-gcc))))
     endif
 
+    ifndef CXX
+      override CXX=$(firstword $(strip $(foreach MINGW_PREFIX, $(MINGW_PREFIXES), \
+         $(call bin_path, $(MINGW_PREFIX)-g++))))
+    endif
+
     ifndef STRIP
       override STRIP=$(firstword $(strip $(foreach MINGW_PREFIX, $(MINGW_PREFIXES), \
          $(call bin_path, $(MINGW_PREFIX)-strip))))
@@ -410,6 +418,10 @@ ifdef MINGW
       override CC=gcc
     endif
 
+    ifeq ($(call bin_path, $(CXX)),)
+      override CXX=g++
+    endif
+
   endif
 
   # using generic windres if specific one is not present
@@ -419,6 +431,9 @@ ifdef MINGW
 
   ifeq ($(CC),)
     $(error Cannot find a suitable cross compiler for $(PLATFORM))
+  endif
+  ifeq ($(CXX),)
+    $(error Cannot find a suitable C++ compiler for $(PLATFORM))
   endif
 
   BASE_CFLAGS += -Wall -Wimplicit -Wstrict-prototypes -DUSE_ICON -DMINGW=1
@@ -461,6 +476,12 @@ ifdef MINGW
       CLIENT_LDFLAGS += -lSDL3
       CLIENT_EXTRA_FILES += $(MOUNT_DIR)/libsdl/windows/mingw/lib64/SDL3.dll
     endif
+  endif
+
+  ifeq ($(ARCH),x86)
+    CLIENT_EXTRA_FILES += $(MOUNT_DIR)/openal/windows/x86/OpenAL32.dll
+  else
+    CLIENT_EXTRA_FILES += $(MOUNT_DIR)/openal/windows/x64/OpenAL32.dll
   endif
 
   ifeq ($(USE_CURL),1)
@@ -634,6 +655,9 @@ endif # *NIX platforms
 
 endif # !MINGW
 
+DEBUG_CXXFLAGS = $(filter-out -Wimplicit -Wstrict-prototypes,$(DEBUG_CFLAGS)) -std=c++17
+RELEASE_CXXFLAGS = $(filter-out -Wimplicit -Wstrict-prototypes,$(RELEASE_CFLAGS)) -std=c++17
+
 
 TARGET_CLIENT = $(CNAME)$(ARCHEXT)$(BINEXT)
 
@@ -679,6 +703,7 @@ endif
 
 ifeq ($(USE_CCACHE),1)
   CC := ccache $(CC)
+  CXX := ccache $(CXX)
 endif
 
 ifneq ($(USE_RENDERER_DLOPEN),0)
@@ -695,6 +720,11 @@ endef
 define DO_CC_QVM
 $(echo_cmd) "CC_QVM $<"
 $(Q)$(CC) $(CFLAGS) -fno-fast-math -o $@ -c $<
+endef
+
+define DO_CXX
+$(echo_cmd) "CXX $<"
+$(Q)$(CXX) $(CXXFLAGS) -o $@ -c $<
 endef
 
 define DO_REND_CC
@@ -745,10 +775,10 @@ default: release
 all: debug release
 
 debug:
-	@B="$(BD)" CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS)" LDFLAGS="$(LDFLAGS) $(DEBUG_LDFLAGS)" $(RECURSIVE_MAKE) targets V=$(V)
+	@B="$(BD)" CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS)" CXXFLAGS="$(CXXFLAGS) $(DEBUG_CXXFLAGS)" LDFLAGS="$(LDFLAGS) $(DEBUG_LDFLAGS)" $(RECURSIVE_MAKE) targets V=$(V)
 
 release:
-	@B="$(BR)" CFLAGS="$(CFLAGS) $(RELEASE_CFLAGS)" $(RECURSIVE_MAKE) targets V=$(V)
+	@B="$(BR)" CFLAGS="$(CFLAGS) $(RELEASE_CFLAGS)" CXXFLAGS="$(CXXFLAGS) $(RELEASE_CXXFLAGS)" $(RECURSIVE_MAKE) targets V=$(V)
 
 define ADD_COPY_TARGET
 TARGETS += $2
@@ -787,9 +817,16 @@ ifdef MINGW
 	@echo "  STRIP: $(STRIP)"
 endif
 	@echo "  CC: $(CC)"
+	@echo "  CXX: $(CXX)"
 	@echo ""
 	@echo "  CFLAGS:"
 	@for i in $(CFLAGS); \
+	do \
+		echo "    $$i"; \
+	done
+	@echo ""
+	@echo "  CXXFLAGS:"
+	@for i in $(CXXFLAGS); \
 	do \
 		echo "    $$i"; \
 	done
@@ -1102,6 +1139,7 @@ Q3OBJ = \
   $(B)/client/huffman_static.o \
   \
   $(B)/client/snd_adpcm.o \
+  $(B)/client/AudioSystem.o \
   $(B)/client/snd_dma.o \
   $(B)/client/snd_mem.o \
   $(B)/client/snd_mix.o \
@@ -1292,7 +1330,7 @@ endif # !MINGW
 
 $(B)/$(TARGET_CLIENT): $(Q3OBJ)
 	$(echo_cmd) "LD $@"
-	$(Q)$(CC) -o $@ $(Q3OBJ) $(CLIENT_LDFLAGS) $(LDFLAGS)
+	$(Q)$(CXX) -o $@ $(Q3OBJ) $(CLIENT_LDFLAGS) $(LDFLAGS)
 
 # modular renderers
 
@@ -1434,6 +1472,9 @@ $(B)/client/%.o: $(ADIR)/%.s
 
 $(B)/client/%.o: $(CDIR)/%.c
 	$(DO_CC)
+
+$(B)/client/%.o: $(AUDIR)/%.cpp
+	$(DO_CXX)
 
 $(B)/client/%.o: $(SDIR)/%.c
 	$(DO_CC)

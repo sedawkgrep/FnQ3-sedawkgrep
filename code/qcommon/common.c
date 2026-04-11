@@ -4143,14 +4143,12 @@ static int Com_ModifyMsec( int msec ) {
 	//
 	if ( com_fixedtime->integer ) {
 		msec = com_fixedtime->integer;
-	} else if ( com_timescale->value ) {
-		msec *= com_timescale->value;
-	} else if (com_cameraMode->integer) {
+	} else if ( com_timescale->value != 1.0f || com_cameraMode->integer ) {
 		msec *= com_timescale->value;
 	}
 
-	// don't let it scale below 1 msec
-	if ( msec < 1 && com_timescale->value) {
+	// don't let positive timescales scale below 1 msec
+	if ( msec < 1 && com_timescale->value > 0.0f ) {
 		msec = 1;
 	}
 
@@ -4221,7 +4219,7 @@ void Com_Frame( qboolean noDelay ) {
 #ifndef DEDICATED
 	static int bias = 0;
 #endif
-	int	msec, realMsec, minMsec;
+	int	gameMsec, realMsec, minMsec;
 	int	sleepMsec;
 	int	timeVal;
 	int	timeValSV;
@@ -4334,7 +4332,7 @@ void Com_Frame( qboolean noDelay ) {
 	Cbuf_Execute();
 
 	// mess with msec if needed
-	msec = Com_ModifyMsec( realMsec );
+	gameMsec = Com_ModifyMsec( realMsec );
 
 	//
 	// server side
@@ -4343,7 +4341,7 @@ void Com_Frame( qboolean noDelay ) {
 		timeBeforeServer = Sys_Milliseconds();
 	}
 
-	SV_Frame( msec );
+	SV_Frame( gameMsec, realMsec );
 
 	// if "dedicated" has been modified, start up
 	// or shut down the client system.
@@ -4404,7 +4402,7 @@ void Com_Frame( qboolean noDelay ) {
 			timeBeforeClient = Sys_Milliseconds();
 		}
 
-		CL_Frame( msec, realMsec );
+		CL_Frame( gameMsec, realMsec );
 
 		if ( com_speeds->integer ) {
 			timeAfter = Sys_Milliseconds();
@@ -4504,6 +4502,7 @@ static qboolean completionQueryMode;
 static fieldCompletionQueryCallback_t completionQueryCallback;
 static void *completionQueryContext;
 static qboolean completionQueryAppendSpace;
+static qboolean completionQueryCollectAll;
 
 /*
 ===============
@@ -4512,15 +4511,22 @@ FindMatches
 */
 static void FindMatches( const char *s ) {
 	int		i, n;
+	qboolean prefixMatch;
 
-	if ( Q_stricmpn( s, completionString, strlen( completionString ) ) ) {
+	prefixMatch = ( Q_stricmpn( s, completionString, strlen( completionString ) ) == 0 ) ? qtrue : qfalse;
+	if ( !prefixMatch && !( completionQueryMode && completionQueryCollectAll ) ) {
 		return;
 	}
 
 	if ( completionQueryMode && completionQueryCallback ) {
-		if ( !completionQueryCallback( s, completionQueryContext ) ) {
+		if ( ( prefixMatch || completionQueryCollectAll ) &&
+			!completionQueryCallback( s, completionQueryContext ) ) {
 			completionQueryCallback = NULL;
 		}
+	}
+
+	if ( !prefixMatch ) {
+		return;
 	}
 
 	matchCount++;
@@ -4790,22 +4796,20 @@ void Field_CompleteCommand( const char *cmd, qboolean doCommands, qboolean doCva
 		completionString = Cmd_Argv( completionArgument - 1 );
 
 #ifndef DEDICATED
-	// Unconditionally add a '\' to the start of the buffer
-	if ( completionField->buffer[ 0 ] && completionField->buffer[ 0 ] != '\\' )
+	// Ensure command completion has an explicit command prefix.
+	if ( completionField->buffer[ 0 ] &&
+		completionField->buffer[ 0 ] != '\\' &&
+		completionField->buffer[ 0 ] != '/' )
 	{
-		if( completionField->buffer[ 0 ] != '/' )
-		{
-			// Buffer is full, refuse to complete
-			if ( strlen( completionField->buffer ) + 1 >= sizeof( completionField->buffer ) )
-				return;
+		// Buffer is full, refuse to complete
+		if ( strlen( completionField->buffer ) + 1 >= sizeof( completionField->buffer ) )
+			return;
 
-			memmove( &completionField->buffer[ 1 ],
-				&completionField->buffer[ 0 ],
-				strlen( completionField->buffer ) + 1 );
-			completionField->cursor++;
-		}
-
-		completionField->buffer[ 0 ] = '\\';
+		memmove( &completionField->buffer[ 1 ],
+			&completionField->buffer[ 0 ],
+			strlen( completionField->buffer ) + 1 );
+		completionField->buffer[ 0 ] = '/';
+		completionField->cursor++;
 	}
 #endif
 
@@ -4896,6 +4900,7 @@ int Field_QueryCompletionMatches( const char *cmd, qboolean *appendSpace,
 	void *savedContext;
 	qboolean savedQueryMode;
 	qboolean savedAppendSpace;
+	qboolean savedCollectAll;
 
 	Field_Clear( &queryField );
 	Q_strncpyz( queryField.buffer, cmd, sizeof( queryField.buffer ) );
@@ -4907,12 +4912,14 @@ int Field_QueryCompletionMatches( const char *cmd, qboolean *appendSpace,
 	savedContext = completionQueryContext;
 	savedQueryMode = completionQueryMode;
 	savedAppendSpace = completionQueryAppendSpace;
+	savedCollectAll = completionQueryCollectAll;
 
 	completionField = &queryField;
 	completionQueryMode = qtrue;
 	completionQueryCallback = callback;
 	completionQueryContext = context;
 	completionQueryAppendSpace = qfalse;
+	completionQueryCollectAll = qfalse;
 	matchCount = 0;
 	shortestMatch[ 0 ] = '\0';
 
@@ -4927,6 +4934,57 @@ int Field_QueryCompletionMatches( const char *cmd, qboolean *appendSpace,
 	completionQueryContext = savedContext;
 	completionQueryMode = savedQueryMode;
 	completionQueryAppendSpace = savedAppendSpace;
+	completionQueryCollectAll = savedCollectAll;
+
+	return matchCount;
+}
+
+
+/*
+===========================
+Field_QueryCompletionCandidates
+===========================
+*/
+int Field_QueryCompletionCandidates( const char *cmd,
+	fieldCompletionQueryCallback_t callback, void *context )
+{
+	field_t queryField;
+	field_t *savedField;
+	fieldCompletionQueryCallback_t savedCallback;
+	void *savedContext;
+	qboolean savedQueryMode;
+	qboolean savedAppendSpace;
+	qboolean savedCollectAll;
+
+	Field_Clear( &queryField );
+	Q_strncpyz( queryField.buffer, cmd, sizeof( queryField.buffer ) );
+	queryField.cursor = strlen( queryField.buffer );
+	queryField.widthInChars = MAX_EDIT_LINE - 1;
+
+	savedField = completionField;
+	savedCallback = completionQueryCallback;
+	savedContext = completionQueryContext;
+	savedQueryMode = completionQueryMode;
+	savedAppendSpace = completionQueryAppendSpace;
+	savedCollectAll = completionQueryCollectAll;
+
+	completionField = &queryField;
+	completionQueryMode = qtrue;
+	completionQueryCallback = callback;
+	completionQueryContext = context;
+	completionQueryAppendSpace = qfalse;
+	completionQueryCollectAll = qtrue;
+	matchCount = 0;
+	shortestMatch[ 0 ] = '\0';
+
+	Field_CompleteCommand( queryField.buffer, qtrue, qtrue );
+
+	completionField = savedField;
+	completionQueryCallback = savedCallback;
+	completionQueryContext = savedContext;
+	completionQueryMode = savedQueryMode;
+	completionQueryAppendSpace = savedAppendSpace;
+	completionQueryCollectAll = savedCollectAll;
 
 	return matchCount;
 }

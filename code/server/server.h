@@ -238,7 +238,7 @@ typedef struct client_s {
 typedef struct {
 	qboolean	initialized;				// sv_init has completed
 
-	int			time;						// will be strictly increasing across level changes
+	int			time;						// real time, strictly increasing across level changes
 	int			msgTime;					// will be used as precise sent time
 
 	int			snapFlagServerBit;			// ^= SNAPFLAG_SERVERCOUNT every SV_SpawnServer()

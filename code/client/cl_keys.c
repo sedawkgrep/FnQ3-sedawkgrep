@@ -416,14 +416,19 @@ static void Console_Key( int key ) {
 			Cbuf_AddText( g_consoleField.buffer+1 );	// valid command
 			Cbuf_AddText( "\n" );
 		} else {
-			// other text will be chat messages
 			if ( !g_consoleField.buffer[0] ) {
 				return;	// empty lines just scroll the console without adding to history
-			} else if ( Con_UseRawSay() ) {
-				Com_sprintf( rawSayBuffer, sizeof( rawSayBuffer ), "say \"%s\"\n", g_consoleField.buffer );
-				CL_AddReliableCommand( rawSayBuffer, qfalse );
+			} else if ( Con_UseAutoSay() ) {
+				// Opt-in legacy console behavior for plain-text chat.
+				if ( Con_UseRawSay() ) {
+					Com_sprintf( rawSayBuffer, sizeof( rawSayBuffer ), "say \"%s\"\n", g_consoleField.buffer );
+					CL_AddReliableCommand( rawSayBuffer, qfalse );
+				} else {
+					Cbuf_AddText( "cmd say " );
+					Cbuf_AddText( g_consoleField.buffer );
+					Cbuf_AddText( "\n" );
+				}
 			} else {
-				Cbuf_AddText( "cmd say " );
 				Cbuf_AddText( g_consoleField.buffer );
 				Cbuf_AddText( "\n" );
 			}

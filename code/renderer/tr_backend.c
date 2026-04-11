@@ -1530,7 +1530,7 @@ static const void *RB_SwapBuffers( const void *data ) {
 	// buffer swap may take undefined time to complete, we can't measure it in a reliable way
 	backEnd.pc.msec = ri.Milliseconds() - backEnd.pc.msec;
 
-	if ( backEnd.screenshotMask && tr.frameCount > 1 ) {
+	if ( ( backEnd.screenshotMask || backEnd.levelshotPending || backEnd.screenshotCubeFrontPending ) && tr.frameCount > 1 ) {
 #ifdef USE_FBO
 		if ( superSampled ) {
 			qglScissor( 0, 0, gls.captureWidth, gls.captureHeight );
@@ -1538,6 +1538,12 @@ static const void *RB_SwapBuffers( const void *data ) {
 			FBO_BlitSS();
 		}
 #endif
+		if ( backEnd.screenshotMask & SCREENSHOT_PNG && backEnd.screenshotPNG[0] ) {
+			RB_TakeScreenshotPNG( 0, 0, gls.captureWidth, gls.captureHeight, backEnd.screenshotPNG );
+			if ( !backEnd.screenShotPNGsilent ) {
+				ri.Printf( PRINT_ALL, "Wrote %s\n", backEnd.screenshotPNG );
+			}
+		}
 		if ( backEnd.screenshotMask & SCREENSHOT_TGA && backEnd.screenshotTGA[0] ) {
 			RB_TakeScreenshot( 0, 0, gls.captureWidth, gls.captureHeight, backEnd.screenshotTGA );
 			if ( !backEnd.screenShotTGAsilent ) {
@@ -1559,11 +1565,49 @@ static const void *RB_SwapBuffers( const void *data ) {
 		if ( backEnd.screenshotMask & SCREENSHOT_AVI ) {
 			RB_TakeVideoFrameCmd( &backEnd.vcmd );
 		}
+		if ( backEnd.levelshotPending ) {
+			RB_TakeLevelShot();
+			backEnd.levelshotPending = qfalse;
+		}
+		if ( backEnd.screenshotCubeFrontPending ) {
+			qboolean oldAllowWatermark;
 
+			oldAllowWatermark = rb_allowScreenshotWatermark;
+			rb_allowScreenshotWatermark = qfalse;
+
+			if ( backEnd.screenshotCubeFormat == SCREENSHOT_PNG ) {
+				RB_TakeScreenshotPNG( backEnd.screenshotCubeFrontX, backEnd.screenshotCubeFrontY,
+					backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeNames[0] );
+			} else if ( backEnd.screenshotCubeFormat == SCREENSHOT_JPG ) {
+				RB_TakeScreenshotJPEG( backEnd.screenshotCubeFrontX, backEnd.screenshotCubeFrontY,
+					backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeNames[0] );
+			} else if ( backEnd.screenshotCubeFormat == SCREENSHOT_BMP ) {
+				RB_TakeScreenshotBMP( backEnd.screenshotCubeFrontX, backEnd.screenshotCubeFrontY,
+					backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeNames[0], qfalse );
+			} else {
+				RB_TakeScreenshot( backEnd.screenshotCubeFrontX, backEnd.screenshotCubeFrontY,
+					backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeFrontSize, backEnd.screenshotCubeNames[0] );
+			}
+
+			rb_allowScreenshotWatermark = oldAllowWatermark;
+
+			if ( !backEnd.screenshotCubeSilent ) {
+				ri.Printf( PRINT_ALL, "Wrote %s\n", backEnd.screenshotCubeNames[0] );
+			}
+
+			backEnd.screenshotCubeFrontPending = qfalse;
+			backEnd.screenshotCubeActive = qfalse;
+		}
+
+		backEnd.screenshotPNG[0] = '\0';
 		backEnd.screenshotJPG[0] = '\0';
 		backEnd.screenshotTGA[0] = '\0';
 		backEnd.screenshotBMP[0] = '\0';
 		backEnd.screenshotMask = 0;
+
+		if ( !backEnd.levelshotPending && !backEnd.screenshotCubeActive && !backEnd.screenshotCubeFrontPending ) {
+			ri.Cvar_Set( "cl_captureActive", "0" );
+		}
 	}
 
 	ri.GLimp_EndFrame();
@@ -1578,6 +1622,35 @@ static const void *RB_SwapBuffers( const void *data ) {
 	backEnd.drawConsole = qfalse;
 
 	r_anaglyphMode->modified = qfalse;
+
+	return (const void *)(cmd + 1);
+}
+
+static const void *RB_TakeScreenshotCmd( const void *data )
+{
+	const screenshotCommand_t *cmd;
+	qboolean oldAllowWatermark;
+
+	cmd = (const screenshotCommand_t *)data;
+
+	oldAllowWatermark = rb_allowScreenshotWatermark;
+	rb_allowScreenshotWatermark = cmd->allowWatermark;
+
+	if ( cmd->format == SCREENSHOT_PNG ) {
+		RB_TakeScreenshotPNG( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName );
+	} else if ( cmd->format == SCREENSHOT_JPG ) {
+		RB_TakeScreenshotJPEG( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName );
+	} else if ( cmd->format == SCREENSHOT_BMP ) {
+		RB_TakeScreenshotBMP( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName, qfalse );
+	} else {
+		RB_TakeScreenshot( cmd->x, cmd->y, cmd->width, cmd->height, cmd->fileName );
+	}
+
+	rb_allowScreenshotWatermark = oldAllowWatermark;
+
+	if ( !cmd->silent ) {
+		ri.Printf( PRINT_ALL, "Wrote %s\n", cmd->fileName );
+	}
 
 	return (const void *)(cmd + 1);
 }
@@ -1604,6 +1677,9 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			break;
 		case RC_DRAW_SURFS:
 			data = RB_DrawSurfs( data );
+			break;
+		case RC_SCREENSHOT:
+			data = RB_TakeScreenshotCmd( data );
 			break;
 		case RC_DRAW_BUFFER:
 			data = RB_DrawBuffer( data );

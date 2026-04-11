@@ -68,3 +68,25 @@ void S_DisplayFreeMemory(void);
 void S_ClearSoundBuffer( void );
 
 void SNDDMA_Activate( void );
+
+#ifndef S_SPATIAL_AUDIO_DEBUG_INFO_DEFINED
+#define S_SPATIAL_AUDIO_DEBUG_INFO_DEFINED
+
+#define S_SPATIAL_DEBUG_MAX_LINES 10
+#define S_SPATIAL_DEBUG_LINE_CHARS 128
+
+typedef struct {
+	qboolean	active;
+	qboolean	hasSelectedVoice;
+	int			lineCount;
+	char		lines[S_SPATIAL_DEBUG_MAX_LINES][S_SPATIAL_DEBUG_LINE_CHARS];
+	float		dryGain;
+	float		wetGain;
+	float		occlusion;
+	float		pan;
+	float		pitch;
+} spatialAudioDebugInfo_t;
+
+#endif
+
+qboolean S_GetSpatialAudioDebugInfo( spatialAudioDebugInfo_t *info );

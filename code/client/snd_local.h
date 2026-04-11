@@ -146,6 +146,8 @@ typedef struct
 	void (*ClearSoundBuffer)( void );
 	void (*SoundInfo)( void );
 	void (*SoundList)( void );
+	qboolean (*GetSpatialDebugInfo)( spatialAudioDebugInfo_t *info );
+	void (*DumpSpatialDebug)( void );
 } soundInterface_t;
 
 
@@ -194,6 +196,9 @@ extern cvar_t *s_musicVolume;
 extern cvar_t *s_doppler;
 extern cvar_t *s_muteWhenUnfocused;
 extern cvar_t *s_muteWhenMinimized;
+extern cvar_t *s_backend;
+extern cvar_t *s_backendActive;
+extern cvar_t *s_alDevice;
 
 extern cvar_t *s_testsound;
 
@@ -234,3 +239,4 @@ extern sfx_t *sfxScratchPointer;
 extern int	   sfxScratchIndex;
 
 qboolean S_Base_Init( soundInterface_t *si );
+qboolean S_OpenAL_Init( soundInterface_t *si );

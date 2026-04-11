@@ -178,6 +178,15 @@ cvar_t	*r_marksOnTriangleMeshes;
 
 cvar_t	*r_aviMotionJpegQuality;
 cvar_t	*r_screenshotJpegQuality;
+cvar_t	*r_screenshotNameFormat;
+cvar_t	*r_screenshotWriteViewpos;
+cvar_t	*r_screenshotWatermark;
+cvar_t	*r_screenshotWatermarkAlignment;
+cvar_t	*r_screenshotWatermarkScreenAlignment;
+cvar_t	*r_screenshotWatermarkMargin;
+cvar_t	*r_levelshotSize;
+cvar_t	*r_levelshotDownscale;
+cvar_t	*r_levelshotSourceAspect;
 
 static cvar_t *r_maxpolys;
 static cvar_t* r_maxpolyverts;
@@ -751,6 +760,431 @@ static byte *RB_ReadPixels(int x, int y, int width, int height, size_t *offset, 
 #endif
 }
 
+typedef enum {
+	SCREENSHOT_ALIGN_TOP_LEFT,
+	SCREENSHOT_ALIGN_TOP,
+	SCREENSHOT_ALIGN_TOP_RIGHT,
+	SCREENSHOT_ALIGN_LEFT,
+	SCREENSHOT_ALIGN_CENTER,
+	SCREENSHOT_ALIGN_RIGHT,
+	SCREENSHOT_ALIGN_BOTTOM_LEFT,
+	SCREENSHOT_ALIGN_BOTTOM,
+	SCREENSHOT_ALIGN_BOTTOM_RIGHT
+} screenshotAlignment_t;
+
+static screenshotAlignment_t R_ParseScreenshotAlignment( const char *value, screenshotAlignment_t fallback )
+{
+	if ( !value || !value[0] ) {
+		return fallback;
+	}
+
+	if ( !Q_stricmp( value, "top-left" ) ) {
+		return SCREENSHOT_ALIGN_TOP_LEFT;
+	}
+	if ( !Q_stricmp( value, "top" ) ) {
+		return SCREENSHOT_ALIGN_TOP;
+	}
+	if ( !Q_stricmp( value, "top-right" ) ) {
+		return SCREENSHOT_ALIGN_TOP_RIGHT;
+	}
+	if ( !Q_stricmp( value, "left" ) ) {
+		return SCREENSHOT_ALIGN_LEFT;
+	}
+	if ( !Q_stricmp( value, "center" ) ) {
+		return SCREENSHOT_ALIGN_CENTER;
+	}
+	if ( !Q_stricmp( value, "right" ) ) {
+		return SCREENSHOT_ALIGN_RIGHT;
+	}
+	if ( !Q_stricmp( value, "bottom-left" ) ) {
+		return SCREENSHOT_ALIGN_BOTTOM_LEFT;
+	}
+	if ( !Q_stricmp( value, "bottom" ) ) {
+		return SCREENSHOT_ALIGN_BOTTOM;
+	}
+	if ( !Q_stricmp( value, "bottom-right" ) ) {
+		return SCREENSHOT_ALIGN_BOTTOM_RIGHT;
+	}
+
+	return fallback;
+}
+
+static void R_SanitizeScreenshotToken( const char *in, char *out, int outSize )
+{
+	int i, c;
+
+	if ( outSize <= 0 ) {
+		return;
+	}
+
+	if ( !in || !in[0] ) {
+		Q_strncpyz( out, "none", outSize );
+		return;
+	}
+
+	for ( i = 0; i < outSize - 1 && ( c = (unsigned char)in[i] ) != 0; i++ ) {
+		if ( ( c >= '0' && c <= '9' ) || ( c >= 'A' && c <= 'Z' ) || ( c >= 'a' && c <= 'z' ) || c == '-' || c == '_' ) {
+			out[i] = c;
+		} else {
+			out[i] = '_';
+		}
+	}
+	out[i] = '\0';
+
+	if ( out[0] == '\0' ) {
+		Q_strncpyz( out, "none", outSize );
+	}
+}
+
+static qboolean R_LoadScreenshotImage( const char *name, byte **pic, int *width, int *height )
+{
+	const char *ext;
+	char strippedName[MAX_QPATH];
+	int i;
+	static const char *extensions[] = { "png", "tga", "jpg", "jpeg", "bmp" };
+
+	*pic = NULL;
+	*width = 0;
+	*height = 0;
+
+	if ( !name || !name[0] ) {
+		return qfalse;
+	}
+
+	ext = COM_GetExtension( name );
+
+	if ( ext && *ext ) {
+		if ( !Q_stricmp( ext, "png" ) ) {
+			R_LoadPNG( name, pic, width, height );
+		} else if ( !Q_stricmp( ext, "tga" ) ) {
+			R_LoadTGA( name, pic, width, height );
+		} else if ( !Q_stricmp( ext, "jpg" ) || !Q_stricmp( ext, "jpeg" ) ) {
+			R_LoadJPG( name, pic, width, height );
+		} else if ( !Q_stricmp( ext, "bmp" ) ) {
+			R_LoadBMP( name, pic, width, height );
+		}
+		return *pic != NULL;
+	}
+
+	COM_StripExtension( name, strippedName, sizeof( strippedName ) );
+
+	for ( i = 0; i < ARRAY_LEN( extensions ) && !*pic; i++ ) {
+		char fileName[MAX_QPATH];
+
+		Com_sprintf( fileName, sizeof( fileName ), "%s.%s", strippedName, extensions[i] );
+		if ( !Q_stricmp( extensions[i], "png" ) ) {
+			R_LoadPNG( fileName, pic, width, height );
+		} else if ( !Q_stricmp( extensions[i], "tga" ) ) {
+			R_LoadTGA( fileName, pic, width, height );
+		} else if ( !Q_stricmp( extensions[i], "bmp" ) ) {
+			R_LoadBMP( fileName, pic, width, height );
+		} else {
+			R_LoadJPG( fileName, pic, width, height );
+		}
+	}
+
+	return *pic != NULL;
+}
+
+static void R_GetAlignedRect( screenshotAlignment_t align, int outerX, int outerY, int outerWidth, int outerHeight,
+	int innerWidth, int innerHeight, int margin, int *x, int *y )
+{
+	int minX, maxX, minY, maxY;
+
+	minX = outerX + margin;
+	minY = outerY + margin;
+	maxX = outerX + outerWidth - innerWidth - margin;
+	maxY = outerY + outerHeight - innerHeight - margin;
+
+	if ( maxX < minX ) {
+		minX = maxX = outerX + ( outerWidth - innerWidth ) / 2;
+	}
+	if ( maxY < minY ) {
+		minY = maxY = outerY + ( outerHeight - innerHeight ) / 2;
+	}
+
+	switch ( align ) {
+		case SCREENSHOT_ALIGN_TOP_LEFT:
+			*x = minX;
+			*y = minY;
+			break;
+		case SCREENSHOT_ALIGN_TOP:
+			*x = outerX + ( outerWidth - innerWidth ) / 2;
+			*y = minY;
+			break;
+		case SCREENSHOT_ALIGN_TOP_RIGHT:
+			*x = maxX;
+			*y = minY;
+			break;
+		case SCREENSHOT_ALIGN_LEFT:
+			*x = minX;
+			*y = outerY + ( outerHeight - innerHeight ) / 2;
+			break;
+		case SCREENSHOT_ALIGN_CENTER:
+			*x = outerX + ( outerWidth - innerWidth ) / 2;
+			*y = outerY + ( outerHeight - innerHeight ) / 2;
+			break;
+		case SCREENSHOT_ALIGN_RIGHT:
+			*x = maxX;
+			*y = outerY + ( outerHeight - innerHeight ) / 2;
+			break;
+		case SCREENSHOT_ALIGN_BOTTOM_LEFT:
+			*x = minX;
+			*y = maxY;
+			break;
+		case SCREENSHOT_ALIGN_BOTTOM:
+			*x = outerX + ( outerWidth - innerWidth ) / 2;
+			*y = maxY;
+			break;
+		case SCREENSHOT_ALIGN_BOTTOM_RIGHT:
+		default:
+			*x = maxX;
+			*y = maxY;
+			break;
+	}
+}
+
+static void R_ApplyScreenshotWatermark( byte *rgb, int width, int height, int padlen )
+{
+	byte *watermark;
+	int watermarkWidth, watermarkHeight;
+	int safeX, safeY, safeWidth, safeHeight;
+	int drawX, drawY;
+	int x, y;
+	int margin;
+	screenshotAlignment_t watermarkAlign;
+	screenshotAlignment_t screenAlign;
+
+	if ( !r_screenshotWatermark || !r_screenshotWatermark->string[0] ) {
+		return;
+	}
+
+	if ( !R_LoadScreenshotImage( r_screenshotWatermark->string, &watermark, &watermarkWidth, &watermarkHeight ) ) {
+		ri.Printf( PRINT_WARNING, "WARNING: could not load screenshot watermark '%s'\n", r_screenshotWatermark->string );
+		return;
+	}
+
+	if ( watermarkWidth <= 0 || watermarkHeight <= 0 ) {
+		ri.Free( watermark );
+		return;
+	}
+
+	margin = r_screenshotWatermarkMargin ? r_screenshotWatermarkMargin->integer : 0;
+	if ( margin < 0 ) {
+		margin = 0;
+	}
+
+	screenAlign = R_ParseScreenshotAlignment( r_screenshotWatermarkScreenAlignment ? r_screenshotWatermarkScreenAlignment->string : "",
+		SCREENSHOT_ALIGN_CENTER );
+	watermarkAlign = R_ParseScreenshotAlignment( r_screenshotWatermarkAlignment ? r_screenshotWatermarkAlignment->string : "",
+		SCREENSHOT_ALIGN_BOTTOM_RIGHT );
+
+	safeWidth = width;
+	safeHeight = ( safeWidth * 3 ) / 4;
+
+	if ( safeHeight > height ) {
+		safeHeight = height;
+		safeWidth = ( safeHeight * 4 ) / 3;
+	}
+
+	R_GetAlignedRect( screenAlign, 0, 0, width, height, safeWidth, safeHeight, 0, &safeX, &safeY );
+	R_GetAlignedRect( watermarkAlign, safeX, safeY, safeWidth, safeHeight, watermarkWidth, watermarkHeight, margin, &drawX, &drawY );
+
+	for ( y = 0; y < watermarkHeight; y++ ) {
+		int dstY = drawY + y;
+
+		if ( dstY < 0 || dstY >= height ) {
+			continue;
+		}
+
+		for ( x = 0; x < watermarkWidth; x++ ) {
+			const byte *src = watermark + ( y * watermarkWidth + x ) * 4;
+			byte *dst;
+			int dstX = drawX + x;
+			int alpha;
+
+			if ( dstX < 0 || dstX >= width ) {
+				continue;
+			}
+
+			alpha = src[3];
+			if ( alpha <= 0 ) {
+				continue;
+			}
+
+			dst = rgb + ( height - 1 - dstY ) * ( width * 3 + padlen ) + dstX * 3;
+			dst[0] = (byte)( ( dst[0] * ( 255 - alpha ) + src[0] * alpha ) / 255 );
+			dst[1] = (byte)( ( dst[1] * ( 255 - alpha ) + src[1] * alpha ) / 255 );
+			dst[2] = (byte)( ( dst[2] * ( 255 - alpha ) + src[2] * alpha ) / 255 );
+		}
+	}
+
+	ri.Free( watermark );
+}
+
+static void R_ViewAxisToAngles( vec3_t axis[3], vec3_t angles )
+{
+	vec3_t baseAxis[3];
+	float dotLeft, dotUp;
+
+	vectoangles( axis[0], angles );
+	AnglesToAxis( angles, baseAxis );
+
+	dotLeft = DotProduct( axis[1], baseAxis[1] );
+	dotUp = DotProduct( axis[1], baseAxis[2] );
+	angles[ROLL] = atan2( dotUp, dotLeft ) * 180.0f / M_PI;
+}
+
+static void R_WriteScreenshotViewpos( const char *imageFileName, const vec3_t origin, vec3_t axis[3] )
+{
+	char textName[MAX_OSPATH];
+	char text[512];
+	char mapName[MAX_QPATH];
+	vec3_t angles;
+	int len;
+
+	if ( !r_screenshotWriteViewpos || !r_screenshotWriteViewpos->integer || !imageFileName || !imageFileName[0] ) {
+		return;
+	}
+
+	COM_StripExtension( imageFileName, textName, sizeof( textName ) );
+	Q_strcat( textName, sizeof( textName ), ".txt" );
+
+	if ( tr.world && tr.world->baseName[0] ) {
+		R_SanitizeScreenshotToken( tr.world->baseName, mapName, sizeof( mapName ) );
+	} else {
+		Q_strncpyz( mapName, "nomap", sizeof( mapName ) );
+	}
+
+	R_ViewAxisToAngles( axis, angles );
+
+	len = Com_sprintf( text, sizeof( text ),
+		"map %s\norigin %.3f %.3f %.3f\nangles %.3f %.3f %.3f\nsetviewpos %.3f %.3f %.3f %.3f %.3f %.3f\n",
+		mapName,
+		origin[0], origin[1], origin[2],
+		angles[0], angles[1], angles[2],
+		origin[0], origin[1], origin[2], angles[0], angles[1], angles[2] );
+
+	ri.FS_WriteFile( textName, text, len );
+}
+
+static void R_AppendScreenshotToken( char *out, int outSize, const char *value )
+{
+	if ( value && value[0] ) {
+		Q_strcat( out, outSize, value );
+	}
+}
+
+static qboolean R_ExpandScreenshotPattern( char *out, int outSize, const char *pattern, const char *commandName,
+	const char *faceName, const char *fileExt, int iter, qboolean *usedIter )
+{
+	char tokenName[64];
+	char tokenValue[128];
+	char mapName[MAX_QPATH];
+	qtime_t t;
+	int i;
+
+	ri.Com_RealTime( &t );
+	out[0] = '\0';
+	*usedIter = qfalse;
+
+	if ( tr.world && tr.world->baseName[0] ) {
+		R_SanitizeScreenshotToken( tr.world->baseName, mapName, sizeof( mapName ) );
+	} else {
+		Q_strncpyz( mapName, "nomap", sizeof( mapName ) );
+	}
+
+	for ( i = 0; pattern && pattern[i] != '\0'; i++ ) {
+		if ( pattern[i] == '{' ) {
+			const char *end = strchr( pattern + i + 1, '}' );
+			if ( end ) {
+				int tokenLen = end - ( pattern + i + 1 );
+
+				if ( tokenLen > 0 && tokenLen < (int)sizeof( tokenName ) ) {
+					char *format;
+					int padWidth = 0;
+
+					Q_strncpyz( tokenName, pattern + i + 1, tokenLen + 1 );
+					format = strchr( tokenName, ':' );
+					if ( format ) {
+						*format++ = '\0';
+						padWidth = atoi( format );
+						if ( padWidth < 0 ) {
+							padWidth = 0;
+						}
+					}
+
+					tokenValue[0] = '\0';
+
+					if ( !Q_stricmp( tokenName, "map" ) ) {
+						Q_strncpyz( tokenValue, mapName, sizeof( tokenValue ) );
+					} else if ( !Q_stricmp( tokenName, "date" ) ) {
+						Com_sprintf( tokenValue, sizeof( tokenValue ), "%04d%02d%02d",
+							1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday );
+					} else if ( !Q_stricmp( tokenName, "time" ) ) {
+						Com_sprintf( tokenValue, sizeof( tokenValue ), "%02d%02d%02d",
+							t.tm_hour, t.tm_min, t.tm_sec );
+					} else if ( !Q_stricmp( tokenName, "datetime" ) ) {
+						Com_sprintf( tokenValue, sizeof( tokenValue ), "%04d%02d%02d-%02d%02d%02d",
+							1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday,
+							t.tm_hour, t.tm_min, t.tm_sec );
+					} else if ( !Q_stricmp( tokenName, "iter" ) ) {
+						if ( padWidth > 0 ) {
+							Com_sprintf( tokenValue, sizeof( tokenValue ), "%0*d", padWidth, iter );
+						} else {
+							Com_sprintf( tokenValue, sizeof( tokenValue ), "%d", iter );
+						}
+						*usedIter = qtrue;
+					} else if ( !Q_stricmp( tokenName, "cmd" ) ) {
+						R_SanitizeScreenshotToken( commandName, tokenValue, sizeof( tokenValue ) );
+					} else if ( !Q_stricmp( tokenName, "face" ) ) {
+						if ( faceName && faceName[0] ) {
+							R_SanitizeScreenshotToken( faceName, tokenValue, sizeof( tokenValue ) );
+						}
+					} else if ( !Q_stricmp( tokenName, "type" ) ) {
+						Q_strncpyz( tokenValue, fileExt, sizeof( tokenValue ) );
+					}
+
+					if ( tokenValue[0] ) {
+						R_AppendScreenshotToken( out, outSize, tokenValue );
+						i += tokenLen + 1;
+						continue;
+					}
+				}
+			}
+		}
+
+		tokenValue[0] = pattern[i];
+		tokenValue[1] = '\0';
+		R_AppendScreenshotToken( out, outSize, tokenValue );
+	}
+
+	return out[0] != '\0';
+}
+
+
+/*
+==================
+RB_TakeScreenshotPNG
+==================
+*/
+void RB_TakeScreenshotPNG( int x, int y, int width, int height, const char *fileName )
+{
+	byte *buffer;
+	size_t offset = 0, memcount;
+	int padlen;
+
+	buffer = RB_ReadPixels( x, y, width, height, &offset, &padlen, 0 );
+	memcount = ( width * 3 + padlen ) * height;
+
+	R_GammaCorrect( buffer + offset, memcount );
+	R_ApplyScreenshotWatermark( buffer + offset, width, height, padlen );
+
+	R_SavePNG( fileName, width, height, buffer + offset, padlen );
+	R_WriteScreenshotViewpos( fileName, backEnd.refdef.vieworg, backEnd.refdef.viewaxis );
+	ri.Hunk_FreeTempMemory( buffer );
+}
+
 
 /*
 ==================
@@ -779,9 +1213,13 @@ void RB_TakeScreenshot( int x, int y, int width, int height, const char *fileNam
 	buffer[15] = height >> 8;
 	buffer[16] = 24;	// pixel size
 
-	// swap rgb to bgr and remove padding from line endings
 	linelen = width * 3;
 
+	// gamma correction and watermarking happen on the raw RGB buffer
+	R_GammaCorrect( allbuf + offset, ( linelen + padlen ) * height );
+	R_ApplyScreenshotWatermark( allbuf + offset, width, height, padlen );
+
+	// swap rgb to bgr and remove padding from line endings
 	srcptr = destptr = allbuf + offset;
 	endmem = srcptr + (linelen + padlen) * height;
 
@@ -805,10 +1243,8 @@ void RB_TakeScreenshot( int x, int y, int width, int height, const char *fileNam
 
 	memcount = linelen * height;
 
-	// gamma correction
-	R_GammaCorrect( allbuf + offset, memcount );
-
 	ri.FS_WriteFile( fileName, buffer, memcount + header_size );
+	R_WriteScreenshotViewpos( fileName, backEnd.refdef.vieworg, backEnd.refdef.viewaxis );
 
 	ri.Hunk_FreeTempMemory( allbuf );
 }
@@ -830,8 +1266,10 @@ void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fil
 
 	// gamma correction
 	R_GammaCorrect( buffer + offset, memcount );
+	R_ApplyScreenshotWatermark( buffer + offset, width, height, padlen );
 
 	ri.CL_SaveJPG( fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen );
+	R_WriteScreenshotViewpos( fileName, backEnd.refdef.vieworg, backEnd.refdef.viewaxis );
 	ri.Hunk_FreeTempMemory( buffer );
 }
 
@@ -904,6 +1342,10 @@ void RB_TakeScreenshotBMP( int x, int y, int width, int height, const char *file
 	scanpad = scanlen - width*3;
 	memcount = scanlen * height;
 
+	// gamma correction and watermarking happen on the raw RGB buffer
+	R_GammaCorrect( allbuf + offset, ( width * 3 + padlen ) * height );
+	R_ApplyScreenshotWatermark( allbuf + offset, width, height, padlen );
+
 	// swap rgb to bgr and add line padding
 	if ( scanpad == 0 && padlen == 0 ) {
 		// fastest case
@@ -945,14 +1387,12 @@ void RB_TakeScreenshotBMP( int x, int y, int width, int height, const char *file
 	// fill this last to avoid data overwrite in case when we're moving destination buffer forward
 	FillBMPHeader( buffer - header_size, width, height, memcount, header_size );
 
-	// gamma correction
-	R_GammaCorrect( buffer, memcount );
-
 	if ( clipboardOnly ) {
 		// copy starting from bitmapinfoheader
 		ri.Sys_SetClipboardBitmap( buffer - 40, memcount + 40 );
 	} else {
 		ri.FS_WriteFile( fileName, buffer - header_size, memcount + header_size );
+		R_WriteScreenshotViewpos( fileName, backEnd.refdef.vieworg, backEnd.refdef.viewaxis );
 	}
 
 	ri.Hunk_FreeTempMemory( allbuf );
@@ -964,21 +1404,259 @@ void RB_TakeScreenshotBMP( int x, int y, int width, int height, const char *file
 R_ScreenshotFilename
 ==================
 */
-static void R_ScreenshotFilename( char *fileName, const char *fileExt ) {
-	qtime_t t;
+static void R_ScreenshotFilename( char *fileName, const char *fileExt, const char *commandName, const char *faceName ) {
+	char baseName[MAX_OSPATH];
+	const char *pattern;
 	int count;
 
-	count = 0;
-	ri.Com_RealTime( &t );
+	pattern = ( r_screenshotNameFormat && r_screenshotNameFormat->string[0] ) ? r_screenshotNameFormat->string : "shot-{date}-{time}";
 
-	Com_sprintf( fileName, MAX_OSPATH, "screenshots/shot-%04d%02d%02d-%02d%02d%02d.%s",
-			1900 + t.tm_year, 1 + t.tm_mon,	t.tm_mday,
-			t.tm_hour, t.tm_min, t.tm_sec, fileExt );
+	for ( count = 0; count < 1000; count++ ) {
+		qboolean usedIter;
 
-	while (	ri.FS_FileExists( fileName ) && ++count < 1000 ) {
-		Com_sprintf( fileName, MAX_OSPATH, "screenshots/shot-%04d%02d%02d-%02d%02d%02d-%d.%s",
-				1900 + t.tm_year, 1 + t.tm_mon,	t.tm_mday,
-				t.tm_hour, t.tm_min, t.tm_sec, count, fileExt );
+		if ( !R_ExpandScreenshotPattern( baseName, sizeof( baseName ), pattern, commandName, faceName, fileExt, count, &usedIter ) ) {
+			Com_sprintf( baseName, sizeof( baseName ), "shot-%d", count );
+			usedIter = qtrue;
+		}
+
+		if ( faceName && faceName[0] && !strstr( pattern, "{face}" ) ) {
+			Q_strcat( baseName, sizeof( baseName ), va( "-%s", faceName ) );
+		}
+
+		if ( !usedIter && count > 0 ) {
+			Q_strcat( baseName, sizeof( baseName ), va( "-%d", count ) );
+		}
+
+		Com_sprintf( fileName, MAX_OSPATH, "screenshots/%s.%s", baseName, fileExt );
+		if ( !ri.FS_FileExists( fileName ) ) {
+			return;
+		}
+	}
+
+	Com_sprintf( fileName, MAX_OSPATH, "screenshots/shot-overflow.%s", fileExt );
+}
+
+typedef struct {
+	int sourceX;
+	int sourceY;
+	int sourceWidth;
+	int sourceHeight;
+	int outputWidth;
+	int outputHeight;
+} levelshotParams_t;
+
+static qboolean R_LevelshotValueIsDisabled( const char *value )
+{
+	return !value || !value[0] || !Q_stricmp( value, "0" ) || !Q_stricmp( value, "none" ) ||
+		!Q_stricmp( value, "source" ) || !Q_stricmp( value, "viewport" ) || !Q_stricmp( value, "default" );
+}
+
+static const char *R_LevelshotFindSeparator( const char *value )
+{
+	const char *sep;
+
+	sep = strchr( value, 'x' );
+	if ( !sep ) {
+		sep = strchr( value, 'X' );
+	}
+	if ( !sep ) {
+		sep = strchr( value, ':' );
+	}
+	if ( !sep ) {
+		sep = strchr( value, '/' );
+	}
+
+	return sep;
+}
+
+static qboolean R_ParseLevelshotSize( const char *value, int *width, int *height )
+{
+	const char *sep;
+
+	if ( R_LevelshotValueIsDisabled( value ) ) {
+		return qfalse;
+	}
+
+	sep = R_LevelshotFindSeparator( value );
+	if ( sep ) {
+		char left[32];
+		char right[32];
+		int leftLen = sep - value;
+		int rightLen = strlen( sep + 1 );
+
+		if ( leftLen <= 0 || leftLen >= (int)sizeof( left ) || rightLen <= 0 || rightLen >= (int)sizeof( right ) ) {
+			return qfalse;
+		}
+
+		Q_strncpyz( left, value, leftLen + 1 );
+		Q_strncpyz( right, sep + 1, rightLen + 1 );
+
+		*width = atoi( left );
+		*height = atoi( right );
+		return *width > 0 && *height > 0;
+	}
+
+	*width = atoi( value );
+	*height = *width;
+	return *width > 0;
+}
+
+static qboolean R_ParseLevelshotAspect( const char *value, float *aspect )
+{
+	const char *sep;
+
+	if ( R_LevelshotValueIsDisabled( value ) ) {
+		return qfalse;
+	}
+
+	sep = R_LevelshotFindSeparator( value );
+	if ( sep ) {
+		char left[32];
+		char right[32];
+		float leftValue;
+		float rightValue;
+		int leftLen = sep - value;
+		int rightLen = strlen( sep + 1 );
+
+		if ( leftLen <= 0 || leftLen >= (int)sizeof( left ) || rightLen <= 0 || rightLen >= (int)sizeof( right ) ) {
+			return qfalse;
+		}
+
+		Q_strncpyz( left, value, leftLen + 1 );
+		Q_strncpyz( right, sep + 1, rightLen + 1 );
+
+		leftValue = Q_atof( left );
+		rightValue = Q_atof( right );
+		if ( leftValue <= 0.0f || rightValue <= 0.0f ) {
+			return qfalse;
+		}
+
+		*aspect = leftValue / rightValue;
+		return qtrue;
+	}
+
+	*aspect = Q_atof( value );
+	return *aspect > 0.0f;
+}
+
+static void R_GetLevelshotCenteredRect( int width, int height, float aspect, int *x, int *y, int *outWidth, int *outHeight )
+{
+	float viewportAspect = (float)width / (float)height;
+
+	if ( viewportAspect > aspect ) {
+		*outHeight = height;
+		*outWidth = (int)( height * aspect + 0.5f );
+	} else {
+		*outWidth = width;
+		*outHeight = (int)( width / aspect + 0.5f );
+	}
+
+	*outWidth = MAX( 1, MIN( width, *outWidth ) );
+	*outHeight = MAX( 1, MIN( height, *outHeight ) );
+	*x = ( width - *outWidth ) / 2;
+	*y = ( height - *outHeight ) / 2;
+}
+
+static void R_ResolveLevelshotParams( int viewportWidth, int viewportHeight, levelshotParams_t *params )
+{
+	float sourceAspect;
+	int outputWidth, outputHeight;
+
+	params->sourceX = 0;
+	params->sourceY = 0;
+	params->sourceWidth = viewportWidth;
+	params->sourceHeight = viewportHeight;
+
+	if ( r_levelshotSourceAspect && R_ParseLevelshotAspect( r_levelshotSourceAspect->string, &sourceAspect ) ) {
+		R_GetLevelshotCenteredRect( viewportWidth, viewportHeight, sourceAspect,
+			&params->sourceX, &params->sourceY, &params->sourceWidth, &params->sourceHeight );
+	} else if ( r_levelshotSourceAspect && !R_LevelshotValueIsDisabled( r_levelshotSourceAspect->string ) ) {
+		ri.Printf( PRINT_WARNING, "WARNING: invalid r_levelshotSourceAspect '%s', using full viewport.\n",
+			r_levelshotSourceAspect->string );
+	}
+
+	if ( r_levelshotSize && R_ParseLevelshotSize( r_levelshotSize->string, &outputWidth, &outputHeight ) ) {
+		params->outputWidth = outputWidth;
+		params->outputHeight = outputHeight;
+		return;
+	}
+
+	if ( r_levelshotSize && !R_LevelshotValueIsDisabled( r_levelshotSize->string ) ) {
+		ri.Printf( PRINT_WARNING, "WARNING: invalid r_levelshotSize '%s', using source size/downscale.\n",
+			r_levelshotSize->string );
+	}
+
+	if ( r_levelshotDownscale && r_levelshotDownscale->value > 1.0f ) {
+		params->outputWidth = MAX( 1, (int)( params->sourceWidth / r_levelshotDownscale->value + 0.5f ) );
+		params->outputHeight = MAX( 1, (int)( params->sourceHeight / r_levelshotDownscale->value + 0.5f ) );
+	} else {
+		params->outputWidth = params->sourceWidth;
+		params->outputHeight = params->sourceHeight;
+	}
+}
+
+static void R_ResampleLevelshot( const byte *source, int sourceWidth, int padlen, const levelshotParams_t *params, byte *out )
+{
+	int stride = sourceWidth * 3 + padlen;
+	int y;
+
+	if ( params->outputWidth == params->sourceWidth && params->outputHeight == params->sourceHeight ) {
+		for ( y = 0; y < params->outputHeight; y++ ) {
+			const byte *src = source + ( params->sourceY + y ) * stride + params->sourceX * 3;
+			byte *dst = out + y * params->outputWidth * 3;
+
+			Com_Memcpy( dst, src, params->outputWidth * 3 );
+		}
+		return;
+	}
+
+	for ( y = 0; y < params->outputHeight; y++ ) {
+		int srcY0 = params->sourceY + ( y * params->sourceHeight ) / params->outputHeight;
+		int srcY1 = params->sourceY + ( ( y + 1 ) * params->sourceHeight + params->outputHeight - 1 ) / params->outputHeight;
+		int x;
+
+		if ( srcY1 <= srcY0 ) {
+			srcY1 = srcY0 + 1;
+		}
+		if ( srcY1 > params->sourceY + params->sourceHeight ) {
+			srcY1 = params->sourceY + params->sourceHeight;
+		}
+
+		for ( x = 0; x < params->outputWidth; x++ ) {
+			int srcX0 = params->sourceX + ( x * params->sourceWidth ) / params->outputWidth;
+			int srcX1 = params->sourceX + ( ( x + 1 ) * params->sourceWidth + params->outputWidth - 1 ) / params->outputWidth;
+			unsigned long long red = 0;
+			unsigned long long green = 0;
+			unsigned long long blue = 0;
+			int count = 0;
+			int sampleY;
+			byte *dst = out + ( y * params->outputWidth + x ) * 3;
+
+			if ( srcX1 <= srcX0 ) {
+				srcX1 = srcX0 + 1;
+			}
+			if ( srcX1 > params->sourceX + params->sourceWidth ) {
+				srcX1 = params->sourceX + params->sourceWidth;
+			}
+
+			for ( sampleY = srcY0; sampleY < srcY1; sampleY++ ) {
+				const byte *row = source + sampleY * stride;
+				int sampleX;
+
+				for ( sampleX = srcX0; sampleX < srcX1; sampleX++ ) {
+					const byte *pixel = row + sampleX * 3;
+
+					red += pixel[0];
+					green += pixel[1];
+					blue += pixel[2];
+					count++;
+				}
+			}
+
+			dst[0] = (byte)( red / count );
+			dst[1] = (byte)( green / count );
+			dst[2] = (byte)( blue / count );
+		}
 	}
 }
 
@@ -987,65 +1665,79 @@ static void R_ScreenshotFilename( char *fileName, const char *fileExt ) {
 ====================
 R_LevelShot
 
-levelshots are specialized 128*128 thumbnails for
-the menu system, sampled down from full screen distorted images
+levelshots write map preview images under levelshots/ and can
+retain the viewport size, crop from a centered aspect block, or
+resample to an explicit output size
 ====================
 */
-static void R_LevelShot( void ) {
+static void R_SetCaptureActive( qboolean active )
+{
+	ri.Cvar_Set( "cl_captureActive", active ? "1" : "0" );
+}
+
+void RB_TakeLevelShot( void ) {
 	char		checkname[MAX_OSPATH];
 	byte		*buffer;
+	byte		*rgb;
 	byte		*source, *allsource;
-	byte		*src, *dst;
 	size_t		offset = 0;
 	int			padlen;
 	int			x, y;
-	int			r, g, b;
-	float		xScale, yScale;
-	int			xx, yy;
+	levelshotParams_t params;
 
 	Com_sprintf(checkname, sizeof(checkname), "levelshots/%s.tga", tr.world->baseName);
 
 	allsource = RB_ReadPixels(0, 0, gls.captureWidth, gls.captureHeight, &offset, &padlen, 0 );
 	source = allsource + offset;
+	R_ResolveLevelshotParams( gls.captureWidth, gls.captureHeight, &params );
 
-	buffer = ri.Hunk_AllocateTempMemory(128 * 128*3 + 18);
+	rgb = ri.Hunk_AllocateTempMemory( params.outputWidth * params.outputHeight * 3 );
+	R_ResampleLevelshot( source, gls.captureWidth, padlen, &params, rgb );
+
+	R_GammaCorrect( rgb, params.outputWidth * params.outputHeight * 3 );
+
+	buffer = ri.Hunk_AllocateTempMemory( params.outputWidth * params.outputHeight * 3 + 18 );
 	Com_Memset (buffer, 0, 18);
 	buffer[2] = 2;		// uncompressed type
-	buffer[12] = 128;
-	buffer[14] = 128;
+	buffer[12] = params.outputWidth & 255;
+	buffer[13] = params.outputWidth >> 8;
+	buffer[14] = params.outputHeight & 255;
+	buffer[15] = params.outputHeight >> 8;
 	buffer[16] = 24;	// pixel size
 
-	// resample from source
-	xScale = glConfig.vidWidth / 512.0f;
-	yScale = glConfig.vidHeight / 384.0f;
-	for ( y = 0 ; y < 128 ; y++ ) {
-		for ( x = 0 ; x < 128 ; x++ ) {
-			r = g = b = 0;
-			for ( yy = 0 ; yy < 3 ; yy++ ) {
-				for ( xx = 0 ; xx < 4 ; xx++ ) {
-					src = source + (3 * glConfig.vidWidth + padlen) * (int)((y*3 + yy) * yScale) +
-						3 * (int) ((x*4 + xx) * xScale);
-					r += src[0];
-					g += src[1];
-					b += src[2];
-				}
-			}
-			dst = buffer + 18 + 3 * ( y * 128 + x );
-			dst[0] = b / 12;
-			dst[1] = g / 12;
-			dst[2] = r / 12;
+	for ( y = 0; y < params.outputHeight; y++ ) {
+		for ( x = 0; x < params.outputWidth; x++ ) {
+			const byte *src = rgb + ( y * params.outputWidth + x ) * 3;
+			byte *dst = buffer + 18 + ( y * params.outputWidth + x ) * 3;
+
+			dst[0] = src[2];
+			dst[1] = src[1];
+			dst[2] = src[0];
 		}
 	}
 
-	// gamma correction
-	R_GammaCorrect( buffer + 18, 128 * 128 * 3 );
+	ri.FS_WriteFile( checkname, buffer, params.outputWidth * params.outputHeight * 3 + 18 );
 
-	ri.FS_WriteFile( checkname, buffer, 128 * 128*3 + 18 );
-
+	ri.Hunk_FreeTempMemory(rgb);
 	ri.Hunk_FreeTempMemory(buffer);
 	ri.Hunk_FreeTempMemory(allsource);
 
-	ri.Printf( PRINT_ALL, "Wrote %s\n", checkname );
+	ri.Printf( PRINT_ALL, "Wrote %s (%dx%d)\n", checkname, params.outputWidth, params.outputHeight );
+}
+
+static void R_ScheduleLevelShot( void )
+{
+	if ( !tr.world ) {
+		ri.Printf( PRINT_WARNING, "WARNING: screenshot levelshot requires an active world.\n" );
+		return;
+	}
+
+	if ( backEnd.levelshotPending ) {
+		return;
+	}
+
+	backEnd.levelshotPending = qtrue;
+	R_SetCaptureActive( qtrue );
 }
 
 
@@ -1056,6 +1748,7 @@ R_ScreenShot_f
 screenshot
 screenshot [silent]
 screenshot [levelshot]
+screenshot [cubemap]
 screenshot [filename]
 
 Doesn't print the pacifier message if there is a second arg
@@ -1072,20 +1765,28 @@ static void R_ScreenShot_f( void ) {
 		return;
 	}
 
-	if ( !strcmp( ri.Cmd_Argv(1), "levelshot" ) ) {
-		R_LevelShot();
-		return;
-	}
-
 	if ( Q_stricmp( ri.Cmd_Argv(0), "screenshotJPEG" ) == 0 ) {
 		typeMask = SCREENSHOT_JPG;
 		ext = "jpg";
 	} else if ( Q_stricmp( ri.Cmd_Argv(0), "screenshotBMP" ) == 0 ) {
 		typeMask = SCREENSHOT_BMP;
 		ext = "bmp";
-	} else {
+	} else if ( Q_stricmp( ri.Cmd_Argv(0), "screenshotTGA" ) == 0 ) {
 		typeMask = SCREENSHOT_TGA;
 		ext = "tga";
+	} else {
+		typeMask = SCREENSHOT_PNG;
+		ext = "png";
+	}
+
+	if ( !strcmp( ri.Cmd_Argv( 1 ), "levelshot" ) ) {
+		R_ScheduleLevelShot();
+		return;
+	}
+
+	if ( !strcmp( ri.Cmd_Argv( 1 ), "cubemap" ) ) {
+		ri.Printf( PRINT_WARNING, "WARNING: screenshot cubemap is not implemented for the Vulkan renderer yet.\n" );
+		return;
 	}
 
 	// check if already scheduled
@@ -1110,13 +1811,16 @@ static void R_ScreenShot_f( void ) {
 			checkname[0] = '\0';
 		} else {
 			// scan for a free filename
-			R_ScreenshotFilename( checkname, ext );
+			R_ScreenshotFilename( checkname, ext, ri.Cmd_Argv( 0 ), NULL );
 		}
 	}
 
 	// we will make screenshot right at the end of RE_EndFrame()
 	backEnd.screenshotMask |= typeMask;
-	if ( typeMask == SCREENSHOT_JPG ) {
+	if ( typeMask == SCREENSHOT_PNG ) {
+		backEnd.screenShotPNGsilent = silent;
+		Q_strncpyz( backEnd.screenshotPNG, checkname, sizeof( backEnd.screenshotPNG ) );
+	} else if ( typeMask == SCREENSHOT_JPG ) {
 		backEnd.screenShotJPGsilent = silent;
 		Q_strncpyz( backEnd.screenshotJPG, checkname, sizeof( backEnd.screenshotJPG ) );
 	} else if ( typeMask == SCREENSHOT_BMP ) {
@@ -1496,6 +2200,8 @@ static void R_Register( void )
 	ri.Cmd_AddCommand( "skinlist", R_SkinList_f );
 	ri.Cmd_AddCommand( "modellist", R_Modellist_f );
 	ri.Cmd_AddCommand( "screenshot", R_ScreenShot_f );
+	ri.Cmd_AddCommand( "screenshotPNG", R_ScreenShot_f );
+	ri.Cmd_AddCommand( "screenshotTGA", R_ScreenShot_f );
 	ri.Cmd_AddCommand( "screenshotJPEG", R_ScreenShot_f );
 	ri.Cmd_AddCommand( "screenshotBMP", R_ScreenShot_f );
 	ri.Cmd_AddCommand( "gfxinfo", GfxInfo_f );
@@ -1734,6 +2440,26 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_aviMotionJpegQuality, "Controls quality of Jpeg video capture when \\cl_aviMotionJpeg 1." );
 	r_screenshotJpegQuality = ri.Cvar_Get( "r_screenshotJpegQuality", "90", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_screenshotJpegQuality, "Controls quality of Jpeg screenshots when using screenshotJpeg." );
+	r_screenshotNameFormat = ri.Cvar_Get( "r_screenshotNameFormat", "shot-{date}-{time}", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_screenshotNameFormat, "Controls auto-generated screenshot names. Tokens: {map}, {date}, {time}, {datetime}, {iter[:width]}, {cmd}, {face}, {type}." );
+	r_screenshotWriteViewpos = ri.Cvar_Get( "r_screenshotWriteViewpos", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_screenshotWriteViewpos, "Write a companion .txt file with map, origin, angles and setviewpos for each saved screenshot." );
+	r_screenshotWatermark = ri.Cvar_Get( "r_screenshotWatermark", "", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_screenshotWatermark, "Optional watermark image path for screenshots. Supported formats: png, tga, jpg, jpeg, bmp." );
+	r_screenshotWatermarkAlignment = ri.Cvar_Get( "r_screenshotWatermarkAlignment", "bottom-right", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_screenshotWatermarkAlignment, "Watermark alignment inside the 4:3 screenshot safe area: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right." );
+	r_screenshotWatermarkScreenAlignment = ri.Cvar_Get( "r_screenshotWatermarkScreenAlignment", "center", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_screenshotWatermarkScreenAlignment, "Alignment of the 4:3 watermark safe area inside the full screenshot." );
+	r_screenshotWatermarkMargin = ri.Cvar_Get( "r_screenshotWatermarkMargin", "16", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_screenshotWatermarkMargin, "Margin in pixels between the watermark and the chosen alignment edges." );
+	ri.Cvar_Set( "cl_captureActive", "0" );
+	r_levelshotSize = ri.Cvar_Get( "r_levelshotSize", "", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_levelshotSize, "Controls levelshot output size. Blank keeps the resolved source size, a single integer makes a square image, and WxH sets an explicit output size." );
+	r_levelshotDownscale = ri.Cvar_Get( "r_levelshotDownscale", "1", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_levelshotDownscale, "1", NULL, CV_FLOAT );
+	ri.Cvar_SetDescription( r_levelshotDownscale, "Divides the resolved levelshot source size when r_levelshotSize is blank. 1 keeps full size, 2 halves it." );
+	r_levelshotSourceAspect = ri.Cvar_Get( "r_levelshotSourceAspect", "", CVAR_ARCHIVE_ND );
+	ri.Cvar_SetDescription( r_levelshotSourceAspect, "Optional centered source crop aspect for levelshots, such as 4:3, 16:9, or 1:1. Blank keeps the full viewport." );
 
 	r_bloom_threshold = ri.Cvar_Get( "r_bloom_threshold", "0.6", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_bloom_threshold, "Color level to extract to bloom texture, default is 0.6." );
@@ -1950,6 +2676,8 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	ri.Cmd_RemoveCommand( "modellist" );
 	ri.Cmd_RemoveCommand( "screenshotBMP" );
 	ri.Cmd_RemoveCommand( "screenshotJPEG" );
+	ri.Cmd_RemoveCommand( "screenshotTGA" );
+	ri.Cmd_RemoveCommand( "screenshotPNG" );
 	ri.Cmd_RemoveCommand( "screenshot" );
 	ri.Cmd_RemoveCommand( "imagelist" );
 	ri.Cmd_RemoveCommand( "shaderlist" );

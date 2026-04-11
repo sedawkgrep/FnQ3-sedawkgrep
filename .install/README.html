@@ -263,12 +263,22 @@
     </section>
 
     <section class="section">
+      <h2>Audio Backend</h2>
+      <ul>
+        <li>The default client audio path uses the OpenAL backend with spatial audio support.</li>
+        <li>Set <code>s_backend legacy</code> if you need the original Quake III mixer/device backend instead.</li>
+        <li>Use <code>s_alDevice</code> to select a specific OpenAL device, or leave it empty for the system default device.</li>
+      </ul>
+    </section>
+
+    <section class="section">
       <h2>Documentation</h2>
       <ul>
         <li><a href="../README.md">README.md</a> is the quickest overview of what FnQuake3 is and what it focuses on.</li>
         <li><a href="../BUILD.md">BUILD.md</a> walks through platform-specific build steps.</li>
         <li><a href="../docs/ASPECT_CORRECTION.md">docs/ASPECT_CORRECTION.md</a> explains the HUD, menu, and cinematic presentation options.</li>
         <li><a href="../docs/CONSOLE.md">docs/CONSOLE.md</a> covers console scaling, interaction, completion, and appearance.</li>
+        <li><a href="../docs/SCREENSHOTS.md">docs/SCREENSHOTS.md</a> covers screenshot commands, naming patterns, metadata sidecars, watermarks, and cube-map export.</li>
         <li><a href="../docs/fnquake3/TECHNICAL.md">docs/fnquake3/TECHNICAL.md</a> covers repository layout, versioning, and release flow.</li>
         <li><a href="../LICENSE">LICENSE</a> and <a href="../COPYING.txt">COPYING.txt</a> ship with the package.</li>
       </ul>

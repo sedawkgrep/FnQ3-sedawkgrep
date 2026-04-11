@@ -912,6 +912,8 @@ void Field_Clear( field_t *edit );
 void Field_AutoComplete( field_t *edit );
 int Field_QueryCompletionMatches( const char *cmd, qboolean *appendSpace,
 	fieldCompletionQueryCallback_t callback, void *context );
+int Field_QueryCompletionCandidates( const char *cmd,
+	fieldCompletionQueryCallback_t callback, void *context );
 void Field_CompleteKeyname( void );
 void Field_CompleteKeyBind( int key );
 void Field_CompleteFilename( const char *dir, const char *ext, qboolean stripExt, int flags );
@@ -1217,7 +1219,7 @@ qboolean CL_GameSwitch( void );
 //
 void SV_Init( void );
 void SV_Shutdown( const char *finalmsg );
-void SV_Frame( int msec );
+void SV_Frame( int msec, int realMsec );
 void SV_TrackCvarChanges( void );
 void SV_PacketEvent( const netadr_t *from, msg_t *msg );
 int SV_FrameMsec( void );

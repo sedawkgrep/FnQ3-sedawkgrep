@@ -460,6 +460,88 @@ static void SCR_DrawVoipMeter( void ) {
 }
 #endif
 
+static void SCR_DrawSpatialAudioMeter( float x, float y, float width, float height, float value, const vec4_t fillColor ) {
+	vec4_t backgroundColor = { 0.08f, 0.08f, 0.08f, 0.85f };
+	vec4_t borderColor = { 0.25f, 0.25f, 0.25f, 0.95f };
+	const float clamped = Com_Clamp( 0.0f, 1.0f, value );
+
+	SCR_FillRect( x, y, width, height, backgroundColor );
+	SCR_FillRect( x, y, width, 1, borderColor );
+	SCR_FillRect( x, y + height - 1, width, 1, borderColor );
+	SCR_FillRect( x, y, 1, height, borderColor );
+	SCR_FillRect( x + width - 1, y, 1, height, borderColor );
+	SCR_FillRect( x + 1, y + 1, ( width - 2 ) * clamped, height - 2, fillColor );
+}
+
+static void SCR_DrawSpatialAudioPanMeter( float x, float y, float width, float height, float pan ) {
+	vec4_t backgroundColor = { 0.08f, 0.08f, 0.08f, 0.85f };
+	vec4_t borderColor = { 0.25f, 0.25f, 0.25f, 0.95f };
+	vec4_t centerColor = { 0.55f, 0.55f, 0.55f, 0.95f };
+	vec4_t markerColor = { 0.95f, 0.80f, 0.25f, 0.95f };
+	const float normalizedPan = Com_Clamp( -1.0f, 1.0f, pan ) * 0.5f + 0.5f;
+	const float markerX = x + 1 + normalizedPan * ( width - 2 );
+
+	SCR_FillRect( x, y, width, height, backgroundColor );
+	SCR_FillRect( x, y, width, 1, borderColor );
+	SCR_FillRect( x, y + height - 1, width, 1, borderColor );
+	SCR_FillRect( x, y, 1, height, borderColor );
+	SCR_FillRect( x + width - 1, y, 1, height, borderColor );
+	SCR_FillRect( x + width * 0.5f - 1, y + 1, 2, height - 2, centerColor );
+	SCR_FillRect( markerX - 2, y + 1, 4, height - 2, markerColor );
+}
+
+static void SCR_DrawSpatialAudioDebug( void ) {
+	spatialAudioDebugInfo_t info;
+	const vec4_t overlayColor = { 0.0f, 0.0f, 0.0f, 0.62f };
+	const vec4_t textColor = { 0.95f, 0.95f, 0.95f, 1.0f };
+	const vec4_t dryColor = { 0.40f, 0.78f, 0.95f, 0.95f };
+	const vec4_t wetColor = { 0.35f, 0.90f, 0.55f, 0.95f };
+	const vec4_t occColor = { 0.95f, 0.48f, 0.30f, 0.95f };
+	const vec4_t pitchColor = { 0.88f, 0.70f, 0.98f, 0.95f };
+	const float x = 12.0f;
+	const float y = 74.0f;
+	const float width = 328.0f;
+	float barY;
+	float height;
+	int i;
+
+	if ( !S_GetSpatialAudioDebugInfo( &info ) || !info.active ) {
+		return;
+	}
+
+	height = 14.0f + info.lineCount * 10.0f;
+	if ( info.hasSelectedVoice ) {
+		height += 52.0f;
+	}
+
+	SCR_FillRect( x, y, width, height, overlayColor );
+
+	for ( i = 0; i < info.lineCount; ++i ) {
+		SCR_DrawStringExt( (int)( x + 8.0f ), (int)( y + 6.0f + i * 10.0f ), 8.0f,
+			info.lines[i], textColor, qtrue, qfalse );
+	}
+
+	if ( !info.hasSelectedVoice ) {
+		return;
+	}
+
+	barY = y + 10.0f + info.lineCount * 10.0f;
+	SCR_DrawStringExt( (int)( x + 8.0f ), (int)barY, 8.0f, "dry", textColor, qtrue, qfalse );
+	SCR_DrawSpatialAudioMeter( x + 48.0f, barY, 120.0f, 8.0f, info.dryGain, dryColor );
+	SCR_DrawStringExt( (int)( x + 178.0f ), (int)barY, 8.0f, "wet", textColor, qtrue, qfalse );
+	SCR_DrawSpatialAudioMeter( x + 214.0f, barY, 108.0f, 8.0f, info.wetGain, wetColor );
+
+	barY += 12.0f;
+	SCR_DrawStringExt( (int)( x + 8.0f ), (int)barY, 8.0f, "occ", textColor, qtrue, qfalse );
+	SCR_DrawSpatialAudioMeter( x + 48.0f, barY, 120.0f, 8.0f, info.occlusion, occColor );
+	SCR_DrawStringExt( (int)( x + 178.0f ), (int)barY, 8.0f, "pitch", textColor, qtrue, qfalse );
+	SCR_DrawSpatialAudioMeter( x + 214.0f, barY, 108.0f, 8.0f, Com_Clamp( 0.0f, 1.0f, ( info.pitch - 0.85f ) / 0.30f ), pitchColor );
+
+	barY += 12.0f;
+	SCR_DrawStringExt( (int)( x + 8.0f ), (int)barY, 8.0f, "pan", textColor, qtrue, qfalse );
+	SCR_DrawSpatialAudioPanMeter( x + 48.0f, barY, 274.0f, 8.0f, info.pan );
+}
+
 
 /*
 ===============================================================================
@@ -612,6 +694,7 @@ static void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 #ifdef USE_VOIP
 			SCR_DrawVoipMeter();
 #endif
+			SCR_DrawSpatialAudioDebug();
 			break;
 		}
 	}

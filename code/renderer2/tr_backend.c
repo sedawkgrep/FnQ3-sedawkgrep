@@ -1404,6 +1404,12 @@ static const void	*RB_SwapBuffers( const void *data ) {
 		qglFinish();
 	}
 
+	if ( backEnd.levelshotPending ) {
+		RB_TakeLevelShot();
+		backEnd.levelshotPending = qfalse;
+		ri.Cvar_Set( "cl_captureActive", "0" );
+	}
+
 //	GLimp_LogComment( "***************** RB_SwapBuffers *****************\n\n\n" );
 
 	ri.GLimp_EndFrame();

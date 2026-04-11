@@ -1039,11 +1039,12 @@ typedef struct videoFrameCommand_s {
 } videoFrameCommand_t;
 
 enum {
-	SCREENSHOT_TGA = 1<<0,
-	SCREENSHOT_JPG = 1<<1,
-	SCREENSHOT_BMP = 1<<2,
-	SCREENSHOT_BMP_CLIPBOARD = 1<<3,
-	SCREENSHOT_AVI = 1<<4 // take video frame
+	SCREENSHOT_PNG = 1<<0,
+	SCREENSHOT_TGA = 1<<1,
+	SCREENSHOT_JPG = 1<<2,
+	SCREENSHOT_BMP = 1<<3,
+	SCREENSHOT_BMP_CLIPBOARD = 1<<4,
+	SCREENSHOT_AVI = 1<<5 // take video frame
 };
 
 // all state modified by the back end is separated
@@ -1063,13 +1064,24 @@ typedef struct {
 	qboolean	doneSurfaces;   // done any 3d surfaces already
 	trRefEntity_t	entity2D;	// currentEntity will point at this when doing 2D rendering
 
-	int		screenshotMask;		// tga | jpg | bmp
+	int		screenshotMask;		// png | tga | jpg | bmp
+	char	screenshotPNG[ MAX_OSPATH ];
 	char	screenshotTGA[ MAX_OSPATH ];
 	char	screenshotJPG[ MAX_OSPATH ];
 	char	screenshotBMP[ MAX_OSPATH ];
+	qboolean screenShotPNGsilent;
 	qboolean screenShotTGAsilent;
 	qboolean screenShotJPGsilent;
 	qboolean screenShotBMPsilent;
+	qboolean levelshotPending;
+	int		screenshotCubeFormat;
+	qboolean screenshotCubeSilent;
+	qboolean screenshotCubeActive;
+	qboolean screenshotCubeFrontPending;
+	int		screenshotCubeFrontX;
+	int		screenshotCubeFrontY;
+	int		screenshotCubeFrontSize;
+	char	screenshotCubeNames[6][ MAX_OSPATH ];
 	videoFrameCommand_t	vcmd;	// avi capture
 	
 	qboolean throttle;
@@ -1846,6 +1858,16 @@ typedef struct {
 	int		numDrawSurfs;
 } drawSurfsCommand_t;
 
+typedef struct {
+	int		commandId;
+	int		x, y;
+	int		width, height;
+	int		format;
+	qboolean	silent;
+	qboolean	allowWatermark;
+	char	fileName[MAX_OSPATH];
+} screenshotCommand_t;
+
 typedef struct
 {
 	int commandId;
@@ -1871,6 +1893,7 @@ typedef enum {
 	RC_SET_COLOR,
 	RC_STRETCH_PIC,
 	RC_DRAW_SURFS,
+	RC_SCREENSHOT,
 	RC_DRAW_BUFFER,
 	RC_SWAP_BUFFERS,
 #ifdef USE_FBO
@@ -1909,15 +1932,19 @@ extern	int		max_polys;
 extern	int		max_polyverts;
 
 extern	backEndData_t	*backEndData;
+extern	qboolean rb_allowScreenshotWatermark;
 
 void RB_ExecuteRenderCommands( const void *data );
+void RB_TakeScreenshotPNG( int x, int y, int width, int height, const char *fileName );
 void RB_TakeScreenshot( int x, int y, int width, int height, const char *fileName );
 void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fileName );
 void RB_TakeScreenshotBMP( int x, int y, int width, int height, const char *fileName, int clipboard );
+void RB_TakeLevelShot( void );
 
 void R_IssuePendingRenderCommands( void );
 
 void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs );
+void R_AddScreenshotCmd( int x, int y, int width, int height, int format, const char *fileName, qboolean silent, qboolean allowWatermark );
 
 void RE_SetColor( const float *rgba );
 void RE_StretchPic ( float x, float y, float w, float h, 

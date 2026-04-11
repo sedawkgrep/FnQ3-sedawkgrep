@@ -97,7 +97,7 @@ typedef struct {
 	int			serverTime;			// may be paused during play
 	int			oldServerTime;		// to prevent time from flowing bakcwards
 	int			oldFrameServerTime;	// to check tournament restarts
-	int			serverTimeDelta;	// cl.serverTime = cls.realtime + cl.serverTimeDelta
+	int			serverTimeDelta;	// cl.serverTime = cls.gametime + cl.serverTimeDelta
 									// this value changes as net lag varies
 	qboolean	extrapolatedSnapshot;	// set if any cgame frame has been forced to extrapolate
 									// cleared when CL_AdjustTimeDelta looks at it
@@ -305,9 +305,11 @@ typedef struct {
 	qboolean	cgameStarted;
 
 	int			framecount;
-	int			frametime;			// msec since last frame
+	int			frametime;			// real msec since last frame
+	int			gameFrametime;		// scaled world msec since last frame
 
-	int			realtime;			// ignores pause
+	int			realtime;			// ignores pause and timescale
+	int			gametime;			// scaled world time
 	int			realFrametime;		// ignoring pause, so console always works
 
 	int			numlocalservers;
@@ -417,6 +419,7 @@ extern	cvar_t	*cl_menuAspect;
 extern	cvar_t	*cl_cinematicAspect;
 extern	cvar_t	*cl_hudAspect;
 extern	cvar_t	*cl_hudDump;
+extern	cvar_t	*cl_captureActive;
 extern	cvar_t	*cl_playerHighlight;
 extern	cvar_t	*cl_playerHighlightOutlineScale;
 extern	cvar_t	*cl_playerHighlightRedColor;
@@ -424,6 +427,8 @@ extern	cvar_t	*cl_playerHighlightBlueColor;
 extern	cvar_t	*cl_playerHighlightFreeColor;
 extern	cvar_t	*cl_playerHighlightEnemyColor;
 extern	cvar_t	*cl_playerHighlightTeammateColor;
+extern	cvar_t	*r_levelshotHideHud;
+extern	cvar_t	*r_levelshotHideViewWeapon;
 
 extern	cvar_t	*com_maxfps;
 
@@ -526,6 +531,7 @@ void Con_MouseEvent( int dx, int dy );
 qboolean Con_KeyEvent( int key, qboolean down );
 qboolean Con_InputKey( int key );
 void Con_CharEvent( int key );
+qboolean Con_UseAutoSay( void );
 qboolean Con_UseRawSay( void );
 void Con_PageUp( int lines );
 void Con_PageDown( int lines );

@@ -652,9 +652,6 @@ void NET_QueuePacket( netsrc_t sock, int length, const void *data, const netadr_
 	if ( to->type == NA_BAD ) {
 		return;
 	}
-	if ( com_timescale->value == 0.0f ) {
-		return;
-	}
 
 	if ( offset > 999 ) {
 		offset = 999;
@@ -666,7 +663,7 @@ void NET_QueuePacket( netsrc_t sock, int length, const void *data, const netadr_
 	new->length = length;
 	new->to = *to;
 	new->sock = sock;
-	new->release = Sys_Milliseconds() + (int)( (float)offset / com_timescale->value );
+	new->release = Sys_Milliseconds() + offset;
 	new->next = NULL;
 
 	packetQueue = list_insert( packetQueue, new );

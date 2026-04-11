@@ -897,6 +897,10 @@ void CL_HudDrawStretchPic( float x, float y, float w, float h, float s1, float t
 	float pixelW;
 	float pixelH;
 
+	if ( cl_captureActive && cl_captureActive->integer && r_levelshotHideHud && r_levelshotHideHud->integer ) {
+		return;
+	}
+
 	pixelX = x;
 	pixelY = y;
 	pixelW = w;

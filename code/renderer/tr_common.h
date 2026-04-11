@@ -125,6 +125,7 @@ void R_LoadBMP( const char *name, byte **pic, int *width, int *height );
 void R_LoadJPG( const char *name, byte **pic, int *width, int *height );
 void R_LoadPCX( const char *name, byte **pic, int *width, int *height );
 void R_LoadPNG( const char *name, byte **pic, int *width, int *height );
+void R_SavePNG( const char *name, int width, int height, const byte *pic, int padlen );
 void R_LoadTGA( const char *name, byte **pic, int *width, int *height );
 
 /*

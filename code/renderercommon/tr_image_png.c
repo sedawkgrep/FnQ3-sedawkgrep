@@ -1937,8 +1937,8 @@ void R_LoadPNG(const char *name, byte **pic, int *width, int *height)
 
 	if(!(name && pic))
 	{
-		return;
-	}
+	return;
+}
 
 	/*
 	 *  Zero out return values.
@@ -2485,4 +2485,171 @@ void R_LoadPNG(const char *name, byte **pic, int *width, int *height)
 	 */
 
 	CloseBufferedFile(ThePNG);
+}
+
+/*
+=================
+PNG WRITING
+=================
+*/
+
+static uint32_t R_PNG_CRC32( const uint8_t *data, size_t length )
+{
+	uint32_t crc = 0xFFFFFFFFu;
+	size_t i;
+
+	for ( i = 0; i < length; i++ )
+	{
+		int bit;
+
+		crc ^= data[i];
+		for ( bit = 0; bit < 8; bit++ )
+		{
+			if ( crc & 1u ) {
+				crc = ( crc >> 1 ) ^ 0xEDB88320u;
+			} else {
+				crc >>= 1;
+			}
+		}
+	}
+
+	return ~crc;
+}
+
+static uint32_t R_PNG_Adler32( const uint8_t *data, size_t length )
+{
+	uint32_t s1 = 1;
+	uint32_t s2 = 0;
+	size_t i;
+
+	for ( i = 0; i < length; i++ )
+	{
+		s1 = ( s1 + data[i] ) % 65521u;
+		s2 = ( s2 + s1 ) % 65521u;
+	}
+
+	return ( s2 << 16 ) | s1;
+}
+
+static void R_PNG_WriteUInt32BE( uint8_t *out, uint32_t value )
+{
+	out[0] = (uint8_t)( ( value >> 24 ) & 0xFF );
+	out[1] = (uint8_t)( ( value >> 16 ) & 0xFF );
+	out[2] = (uint8_t)( ( value >> 8 ) & 0xFF );
+	out[3] = (uint8_t)( value & 0xFF );
+}
+
+static uint8_t *R_PNG_WriteChunk( uint8_t *out, uint32_t type, const uint8_t *data, uint32_t length )
+{
+	uint32_t crc;
+
+	R_PNG_WriteUInt32BE( out, length );
+	out += 4;
+	R_PNG_WriteUInt32BE( out, type );
+	out += 4;
+
+	if ( length > 0 && data )
+	{
+		memcpy( out, data, length );
+	}
+
+	crc = R_PNG_CRC32( out - 4, (size_t)length + 4 );
+	out += length;
+	R_PNG_WriteUInt32BE( out, crc );
+	out += 4;
+
+	return out;
+}
+
+void R_SavePNG( const char *name, int width, int height, const byte *pic, int padlen )
+{
+	const size_t rowBytes = (size_t)width * 3;
+	const size_t rawBytes = ( rowBytes + 1 ) * (size_t)height;
+	const size_t numBlocks = ( rawBytes + 65534 ) / 65535;
+	const size_t idatBytes = 2 + rawBytes + numBlocks * 5 + 4;
+	const size_t pngBytes = PNG_Signature_Size
+		+ PNG_ChunkHeader_Size + PNG_Chunk_IHDR_Size + PNG_ChunkCRC_Size
+		+ PNG_ChunkHeader_Size + idatBytes + PNG_ChunkCRC_Size
+		+ PNG_ChunkHeader_Size + PNG_ChunkCRC_Size;
+	uint8_t ihdr[ PNG_Chunk_IHDR_Size ];
+	uint8_t *raw;
+	uint8_t *idat;
+	uint8_t *png;
+	uint8_t *out;
+	size_t srcStride;
+	size_t y;
+	size_t rawPos = 0;
+	size_t idatPos = 0;
+	size_t remaining;
+	size_t copied = 0;
+	uint32_t adler;
+
+	if ( !name || !name[0] || !pic || width <= 0 || height <= 0 )
+	{
+		return;
+	}
+
+	if ( rawBytes > 0xFFFFFFFFu || idatBytes > 0xFFFFFFFFu || pngBytes > INT_MAX )
+	{
+		ri.Printf( PRINT_WARNING, "WARNING: screenshot PNG is too large to save safely.\n" );
+		return;
+	}
+
+	raw = ri.Hunk_AllocateTempMemory( rawBytes );
+	idat = ri.Hunk_AllocateTempMemory( idatBytes );
+	png = ri.Hunk_AllocateTempMemory( pngBytes );
+	srcStride = rowBytes + padlen;
+
+	for ( y = 0; y < (size_t)height; y++ )
+	{
+		const uint8_t *src = pic + ( (size_t)height - 1 - y ) * srcStride;
+
+		raw[ rawPos++ ] = PNG_FilterType_None;
+		memcpy( raw + rawPos, src, rowBytes );
+		rawPos += rowBytes;
+	}
+
+	idat[ idatPos++ ] = 0x78;
+	idat[ idatPos++ ] = 0x01;
+
+	remaining = rawBytes;
+	while ( remaining > 0 )
+	{
+		uint16_t blockBytes = ( remaining > 65535 ) ? 65535 : (uint16_t)remaining;
+		uint16_t nlen = (uint16_t)~blockBytes;
+
+		idat[ idatPos++ ] = ( remaining <= 65535 ) ? 0x01 : 0x00;
+		idat[ idatPos++ ] = (uint8_t)( blockBytes & 0xFF );
+		idat[ idatPos++ ] = (uint8_t)( ( blockBytes >> 8 ) & 0xFF );
+		idat[ idatPos++ ] = (uint8_t)( nlen & 0xFF );
+		idat[ idatPos++ ] = (uint8_t)( ( nlen >> 8 ) & 0xFF );
+		memcpy( idat + idatPos, raw + copied, blockBytes );
+		idatPos += blockBytes;
+		copied += blockBytes;
+		remaining -= blockBytes;
+	}
+
+	adler = R_PNG_Adler32( raw, rawBytes );
+	R_PNG_WriteUInt32BE( idat + idatPos, adler );
+	idatPos += 4;
+
+	R_PNG_WriteUInt32BE( ihdr + 0, (uint32_t)width );
+	R_PNG_WriteUInt32BE( ihdr + 4, (uint32_t)height );
+	ihdr[8] = PNG_BitDepth_8;
+	ihdr[9] = PNG_ColourType_True;
+	ihdr[10] = PNG_CompressionMethod_0;
+	ihdr[11] = PNG_FilterMethod_0;
+	ihdr[12] = PNG_InterlaceMethod_NonInterlaced;
+
+	memcpy( png, PNG_Signature, PNG_Signature_Size );
+	out = png + PNG_Signature_Size;
+	out = R_PNG_WriteChunk( out, PNG_ChunkType_IHDR, ihdr, PNG_Chunk_IHDR_Size );
+	out = R_PNG_WriteChunk( out, PNG_ChunkType_IDAT, idat, (uint32_t)idatBytes );
+	out = R_PNG_WriteChunk( out, PNG_ChunkType_IEND, NULL, 0 );
+
+	ri.FS_WriteFile( name, png, (int)pngBytes );
+
+	ri.Hunk_FreeTempMemory( png );
+	ri.Hunk_FreeTempMemory( idat );
+	ri.Hunk_FreeTempMemory( raw );
 }

@@ -98,6 +98,15 @@ Expected behavior:
 - scheduled nightly runs produce a new unique-tagged release per build when `main` has advanced since the last nightly
 - published GitHub releases upload stable archives built from the tagged version
 
+## Audio Backend Notes
+
+- The default client audio path is the OpenAL backend selected by `s_backend openal`.
+- `s_backend legacy` keeps the original Quake III mixer/device backend available as a fallback path.
+- OpenAL headers are vendored under [`code/openal/include`](../../code/openal/include), and Windows x86/x64 package builds stage a matching `OpenAL32.dll` from [`code/openal/windows`](../../code/openal/windows).
+- The runtime reporting cvar is `s_backendActive`. Device selection for the OpenAL backend uses `s_alDevice`.
+- The OpenAL backend also exposes `s_alReverb`, `s_alOcclusion`, `s_alReverbGain`, and `s_alOcclusionStrength` for the environmental spatial layer. Reverb enablement is latched because the EFX reverb slot is created at backend init.
+- Keep dedicated-server builds free of the OpenAL runtime dependency.
+
 ## Naming
 
 Active build, packaging, and distribution surfaces should use `FnQuake3` naming consistently.

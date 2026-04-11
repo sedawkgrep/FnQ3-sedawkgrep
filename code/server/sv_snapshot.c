@@ -775,7 +775,7 @@ void SV_SendClientMessages( void )
 		// 1. Local clients get snapshots every server frame
 		// 2. Remote clients get snapshots depending from rate and requested number of updates
 
-		if ( svs.time - c->lastSnapshotTime < c->snapshotMsec * com_timescale->value )
+		if ( svs.time - c->lastSnapshotTime < c->snapshotMsec )
 			continue;		// It's not time yet
 
 		if ( c->netchan.unsentFragments || c->netchan_start_queue )

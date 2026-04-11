@@ -1468,6 +1468,7 @@ typedef struct {
 	trRefEntity_t	entity2D;	// currentEntity will point at this when doing 2D rendering
 
 	FBO_t *last2DFBO;
+	qboolean levelshotPending;
 	qboolean    colorMask[4];
 	qboolean    framePostProcessed;
 	qboolean    depthFill;
@@ -1971,6 +1972,7 @@ void	R_ImageList_f( void );
 void	R_SkinList_f( void );
 // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=516
 const void *RB_TakeScreenshotCmd( const void *data );
+void RB_TakeLevelShot( void );
 
 void	R_InitFogTable( void );
 float	R_FogFactor( float s, float t );
@@ -2392,7 +2394,7 @@ typedef struct {
 	int width;
 	int height;
 	const char *fileName;
-	qboolean jpeg;
+	int format;
 } screenshotCommand_t;
 
 typedef struct {

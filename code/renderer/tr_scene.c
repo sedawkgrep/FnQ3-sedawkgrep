@@ -364,6 +364,110 @@ void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, flo
 	RE_AddDynamicLightToScene( org, intensity, r, g, b, qtrue );
 }
 
+static void R_SetCubemapFaceAxis( vec3_t baseAxis[3], int faceIndex, vec3_t outAxis[3] )
+{
+	switch ( faceIndex ) {
+		case 0: // front
+			AxisCopy( baseAxis, outAxis );
+			break;
+		case 1: // back
+			VectorNegate( baseAxis[0], outAxis[0] );
+			VectorNegate( baseAxis[1], outAxis[1] );
+			VectorCopy( baseAxis[2], outAxis[2] );
+			break;
+		case 2: // left
+			VectorCopy( baseAxis[1], outAxis[0] );
+			VectorNegate( baseAxis[0], outAxis[1] );
+			VectorCopy( baseAxis[2], outAxis[2] );
+			break;
+		case 3: // right
+			VectorNegate( baseAxis[1], outAxis[0] );
+			VectorCopy( baseAxis[0], outAxis[1] );
+			VectorCopy( baseAxis[2], outAxis[2] );
+			break;
+		case 4: // top
+			VectorCopy( baseAxis[2], outAxis[0] );
+			VectorCopy( baseAxis[1], outAxis[1] );
+			VectorNegate( baseAxis[0], outAxis[2] );
+			break;
+		case 5: // bottom
+		default:
+			VectorNegate( baseAxis[2], outAxis[0] );
+			VectorCopy( baseAxis[1], outAxis[1] );
+			VectorCopy( baseAxis[0], outAxis[2] );
+			break;
+	}
+}
+
+static void R_RenderScreenshotCubemapViews( void )
+{
+	trRefdef_t cubeRefdef;
+	viewParms_t cubeParms;
+	vec3_t baseAxis[3];
+	int faceSize;
+	int captureSize;
+	int captureX;
+	int captureY;
+	int i;
+
+	faceSize = MIN( glConfig.vidWidth, glConfig.vidHeight );
+	captureSize = MIN( gls.captureWidth, gls.captureHeight );
+	captureX = ( gls.captureWidth - captureSize ) / 2;
+	captureY = ( gls.captureHeight - captureSize ) / 2;
+
+	cubeRefdef = tr.refdef;
+	cubeRefdef.x = ( glConfig.vidWidth - faceSize ) / 2;
+	cubeRefdef.y = ( glConfig.vidHeight - faceSize ) / 2;
+	cubeRefdef.width = faceSize;
+	cubeRefdef.height = faceSize;
+	cubeRefdef.fov_x = 90.0f;
+	cubeRefdef.fov_y = 90.0f;
+
+	AxisCopy( tr.refdef.viewaxis, baseAxis );
+
+	for ( i = 1; i < 6; i++ ) {
+		tr.frameSceneNum++;
+		tr.sceneCount++;
+		tr.refdef = cubeRefdef;
+
+		R_SetCubemapFaceAxis( baseAxis, i, tr.refdef.viewaxis );
+
+		Com_Memset( &cubeParms, 0, sizeof( cubeParms ) );
+		cubeParms.viewportX = cubeRefdef.x;
+		cubeParms.viewportY = glConfig.vidHeight - ( cubeRefdef.y + cubeRefdef.height );
+		cubeParms.viewportWidth = cubeRefdef.width;
+		cubeParms.viewportHeight = cubeRefdef.height;
+		cubeParms.scissorX = cubeParms.viewportX;
+		cubeParms.scissorY = cubeParms.viewportY;
+		cubeParms.scissorWidth = cubeParms.viewportWidth;
+		cubeParms.scissorHeight = cubeParms.viewportHeight;
+		cubeParms.portalView = PV_PORTAL;
+		cubeParms.fovX = 90.0f;
+		cubeParms.fovY = 90.0f;
+		cubeParms.stereoFrame = tr.refdef.stereoFrame;
+#ifdef USE_PMLIGHT
+		cubeParms.dlights = tr.refdef.dlights;
+		cubeParms.num_dlights = tr.refdef.num_dlights;
+#endif
+		VectorCopy( tr.refdef.vieworg, cubeParms.or.origin );
+		VectorCopy( tr.refdef.viewaxis[0], cubeParms.or.axis[0] );
+		VectorCopy( tr.refdef.viewaxis[1], cubeParms.or.axis[1] );
+		VectorCopy( tr.refdef.viewaxis[2], cubeParms.or.axis[2] );
+		VectorCopy( tr.refdef.vieworg, cubeParms.pvsOrigin );
+
+		R_RenderView( &cubeParms );
+		R_AddScreenshotCmd( captureX, captureY, captureSize, captureSize, backEnd.screenshotCubeFormat,
+			backEnd.screenshotCubeNames[i], backEnd.screenshotCubeSilent, qfalse );
+	}
+
+	tr.refdef = cubeRefdef;
+	AxisCopy( baseAxis, tr.refdef.viewaxis );
+	backEnd.screenshotCubeFrontX = captureX;
+	backEnd.screenshotCubeFrontY = captureY;
+	backEnd.screenshotCubeFrontSize = captureSize;
+	backEnd.screenshotCubeFrontPending = qtrue;
+}
+
 
 /*
 @@@@@@@@@@@@@@@@@@@@@
@@ -458,6 +562,10 @@ void RE_RenderScene( const refdef_t *fd ) {
 	// dlights if it needs to be disabled
 	if ( r_dynamiclight->integer == 0 || glConfig.hardwareType == GLHW_PERMEDIA2 ) {
 		tr.refdef.num_dlights = 0;
+	}
+
+	if ( backEnd.screenshotCubeActive && !( tr.refdef.rdflags & RDF_NOWORLDMODEL ) ) {
+		R_RenderScreenshotCubemapViews();
 	}
 
 	// a single frame may have multiple scenes draw inside it --

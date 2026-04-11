@@ -47,6 +47,7 @@ cvar_t	*cl_menuAspect;
 cvar_t	*cl_cinematicAspect;
 cvar_t	*cl_hudAspect;
 cvar_t	*cl_hudDump;
+cvar_t	*cl_captureActive;
 cvar_t	*cl_playerHighlight;
 cvar_t	*cl_playerHighlightOutlineScale;
 cvar_t	*cl_playerHighlightRedColor;
@@ -54,6 +55,8 @@ cvar_t	*cl_playerHighlightBlueColor;
 cvar_t	*cl_playerHighlightFreeColor;
 cvar_t	*cl_playerHighlightEnemyColor;
 cvar_t	*cl_playerHighlightTeammateColor;
+cvar_t	*r_levelshotHideHud;
+cvar_t	*r_levelshotHideViewWeapon;
 
 cvar_t	*cl_aviFrameRate;
 cvar_t	*cl_aviMotionJpeg;
@@ -1664,7 +1667,7 @@ static void CL_Connect_f( void ) {
 
 	// make sure a local server is killed
 	Cvar_Set( "sv_killserver", "1" );
-	SV_Frame( 0 );
+	SV_Frame( 0, 0 );
 
 	noGameRestart = qtrue;
 	CL_Disconnect( qtrue );
@@ -3024,6 +3027,8 @@ CL_Frame
 ==================
 */
 void CL_Frame( int msec, int realMsec ) {
+	int gameMsec = msec;
+	int audioMsec = realMsec;
 
 #ifdef USE_CURL
 	if ( download.cURL ) {
@@ -3045,8 +3050,10 @@ void CL_Frame( int msec, int realMsec ) {
 		// download mode since the ui vm expects cls.state to be
 		// CA_CONNECTED
 		if ( clc.cURLDisconnected ) {
-			cls.frametime = msec;
-			cls.realtime += msec;
+			cls.frametime = realMsec;
+			cls.gameFrametime = gameMsec;
+			cls.realtime += realMsec;
+			cls.gametime += gameMsec;
 			cls.framecount++;
 			SCR_UpdateScreen();
 			S_Update( realMsec );
@@ -3068,7 +3075,7 @@ void CL_Frame( int msec, int realMsec ) {
 	}
 
 	// if recording an avi, lock to a fixed fps
-	if ( CL_VideoRecording() && msec ) {
+	if ( CL_VideoRecording() && gameMsec ) {
 		// save the current screen
 		if ( cls.state == CA_ACTIVE || cl_forceavidemo->integer ) {
 			float fps, frameDuration;
@@ -3082,10 +3089,10 @@ void CL_Frame( int msec, int realMsec ) {
 
 			CL_TakeVideoFrame();
 
-			msec = (int)frameDuration;
-			clc.aviVideoFrameRemainder = frameDuration - msec;
+			gameMsec = (int)frameDuration;
+			clc.aviVideoFrameRemainder = frameDuration - gameMsec;
 
-			realMsec = msec; // sync sound duration
+			audioMsec = gameMsec; // sync sound duration
 		}
 	}
 
@@ -3128,11 +3135,13 @@ void CL_Frame( int msec, int realMsec ) {
 	}
 
 	// decide the simulation time
-	cls.frametime = msec;
-	cls.realtime += msec;
+	cls.frametime = realMsec;
+	cls.gameFrametime = gameMsec;
+	cls.realtime += realMsec;
+	cls.gametime += gameMsec;
 
 	if ( cl_timegraph->integer ) {
-		SCR_DebugGraph( msec * 0.25f );
+		SCR_DebugGraph( realMsec * 0.25f );
 	}
 
 	// see if we need to update any userinfo
@@ -3157,7 +3166,7 @@ void CL_Frame( int msec, int realMsec ) {
 	SCR_UpdateScreen();
 
 	// update audio
-	S_Update( realMsec );
+	S_Update( audioMsec );
 
 	// advance local effects for next frame
 	SCR_RunCinematic();
@@ -3357,7 +3366,11 @@ CL_ScaledMilliseconds
 ============
 */
 int CL_ScaledMilliseconds( void ) {
-	return Sys_Milliseconds()*com_timescale->value;
+	if ( cls.realtime ) {
+		return cls.realtime;
+	}
+
+	return Sys_Milliseconds();
 }
 
 
@@ -3965,6 +3978,14 @@ void CL_Init( void ) {
 	cl_hudDump = Cvar_Get( "cl_hudDump", "0", CVAR_ARCHIVE );
 	Cvar_CheckRange( cl_hudDump, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( cl_hudDump, "Dump deduplicated cgame HUD input groups to fnq3-hud-dump.json in the active game directory." );
+	cl_captureActive = Cvar_Get( "cl_captureActive", "0", CVAR_TEMP | CVAR_PRIVATE | CVAR_NORESTART | CVAR_NOTABCOMPLETE );
+	Cvar_SetDescription( cl_captureActive, "Internal capture flag used while screenshot levelshot and cubemap frames are being rendered." );
+	r_levelshotHideHud = Cvar_Get( "r_levelshotHideHud", "1", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( r_levelshotHideHud, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( r_levelshotHideHud, "Hide the HUD while rendering screenshot levelshot and cubemap capture frames. When disabled, cube maps keep HUD only on the front face." );
+	r_levelshotHideViewWeapon = Cvar_Get( "r_levelshotHideViewWeapon", "1", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( r_levelshotHideViewWeapon, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( r_levelshotHideViewWeapon, "Hide first-person weapon models while rendering screenshot levelshot and cubemap capture frames. When disabled, cube maps keep the view weapon only on the front face." );
 	cl_playerHighlight = Cvar_Get( "cl_playerHighlight", "0", CVAR_ARCHIVE );
 	Cvar_CheckRange( cl_playerHighlight, "0", "3", CV_INTEGER );
 	Cvar_SetDescription( cl_playerHighlight,

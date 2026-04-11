@@ -86,8 +86,11 @@ typedef struct {
 	float	mouseY;
 	float	scrollbarHover;
 	float	scrollbarDragOffset;
+	float	completionScrollbarHover;
+	float	completionScrollbarDragOffset;
 	int		completionCount;
 	int		completionSelection;
+	int		completionScroll;
 	int		completionReplaceOffset;
 	int		completionReplaceLength;
 	int		completionSnapshotCursor;
@@ -109,6 +112,7 @@ typedef struct {
 	conFocus_t focus;
 	qboolean mouseInitialized;
 	qboolean scrollbarDragging;
+	qboolean completionScrollbarDragging;
 	qboolean inputSelecting;
 	qboolean logSelecting;
 	qboolean newline;
@@ -135,6 +139,7 @@ static cvar_t	*con_backgroundOpacity;
 static cvar_t	*con_scrollSmooth;
 static cvar_t	*con_scrollSmoothSpeed;
 static cvar_t	*con_completionPopup;
+static cvar_t	*con_autoSay;
 static cvar_t	*con_sayRaw;
 static cvar_t	*con_showClock;
 static cvar_t	*con_showVersion;
@@ -154,6 +159,9 @@ static int Con_GetScrollStep( int lines );
 static void Con_InvalidateCompletionState( void );
 static void Con_RefreshCompletionState( void );
 static void Con_ApplySelectedCompletion( int direction );
+static qboolean Con_GetCompletionScrollbarGeometry( float hoverFrac, float *trackX, float *trackY, float *trackW, float *trackH,
+	float *thumbY, float *thumbH, float *hitX, float *hitW );
+static qboolean Con_GetCompletionCvarInfo( const char *match, char *value, int valueSize, qboolean *modified );
 
 
 static void Con_ParseColorString( const char *string, const vec4_t defaultColor, vec4_t outColor, qboolean allowAlpha ) {
@@ -882,6 +890,7 @@ static void Con_CopySelection( void ) {
 static void Con_InvalidateCompletionState( void ) {
 	con.completionCount = 0;
 	con.completionSelection = 0;
+	con.completionScroll = 0;
 	con.completionReplaceOffset = 0;
 	con.completionReplaceLength = 0;
 	con.completionAppendSpace = qfalse;
@@ -889,6 +898,9 @@ static void Con_InvalidateCompletionState( void ) {
 	con.completionPrependSlash = qfalse;
 	con.completionSnapshotValid = qfalse;
 	con.completionSnapshotCursor = 0;
+	con.completionScrollbarDragging = qfalse;
+	con.completionScrollbarHover = 0.0f;
+	con.completionScrollbarDragOffset = 0.0f;
 	con.completionSnapshotBuffer[ 0 ] = '\0';
 }
 
@@ -931,6 +943,23 @@ static int QDECL Con_CompareCompletionMatches( const void *a, const void *b ) {
 }
 
 
+typedef struct {
+	char	match[MAX_EDIT_LINE];
+	int		category;
+	int		primary;
+	int		secondary;
+	int		tertiary;
+} conFuzzyCompletionMatch_t;
+
+typedef struct {
+	char	needle[MAX_EDIT_LINE];
+	int		needleLen;
+	int		maxDistance;
+	int		count;
+	conFuzzyCompletionMatch_t matches[CON_COMPLETION_MAX_MATCHES];
+} conFuzzyCompletionState_t;
+
+
 static qboolean Con_CollectCompletionMatch( const char *match, void *context ) {
 	int i;
 	(void)context;
@@ -952,6 +981,362 @@ static qboolean Con_CollectCompletionMatch( const char *match, void *context ) {
 	Q_strncpyz( con.completionMatches[ con.completionCount ], match,
 		sizeof( con.completionMatches[ con.completionCount ] ) );
 	con.completionCount++;
+	return qtrue;
+}
+
+
+static int Con_CompletionLower( int ch ) {
+	return tolower( (unsigned char)ch );
+}
+
+
+static qboolean Con_IsCompletionWordChar( int ch ) {
+	ch = (unsigned char)ch;
+	return ( ( ch >= 'a' && ch <= 'z' ) ||
+		( ch >= 'A' && ch <= 'Z' ) ||
+		( ch >= '0' && ch <= '9' ) ) ? qtrue : qfalse;
+}
+
+
+static qboolean Con_IsCompletionBoundary( const char *match, int index ) {
+	if ( index <= 0 ) {
+		return qtrue;
+	}
+
+	return Con_IsCompletionWordChar( match[ index - 1 ] ) ? qfalse : qtrue;
+}
+
+
+static qboolean Con_FindSubstringCompletion( const char *match, const char *needle,
+	int *outPos, qboolean *outBoundary )
+{
+	int i;
+	int needleLen = strlen( needle );
+	int bestPos = -1;
+	qboolean bestBoundary = qfalse;
+
+	if ( needleLen < 2 ) {
+		return qfalse;
+	}
+
+	for ( i = 0; match[ i ]; i++ ) {
+		if ( Q_stricmpn( match + i, needle, needleLen ) != 0 ) {
+			continue;
+		}
+
+		if ( bestPos < 0 ||
+			( Con_IsCompletionBoundary( match, i ) && !bestBoundary ) ||
+			( Con_IsCompletionBoundary( match, i ) == bestBoundary && i < bestPos ) ) {
+			bestPos = i;
+			bestBoundary = Con_IsCompletionBoundary( match, i );
+
+			if ( bestPos == 0 ) {
+				break;
+			}
+		}
+	}
+
+	if ( bestPos < 0 ) {
+		return qfalse;
+	}
+
+	if ( outPos ) {
+		*outPos = bestPos;
+	}
+	if ( outBoundary ) {
+		*outBoundary = bestBoundary;
+	}
+
+	return qtrue;
+}
+
+
+static qboolean Con_FindSubsequenceCompletion( const char *match, const char *needle,
+	int *outStart, int *outGapScore, qboolean *outBoundary )
+{
+	int i;
+	int j = 0;
+	int start = -1;
+	int previous = -1;
+	int gapScore = 0;
+
+	if ( !needle[ 0 ] || !needle[ 1 ] ) {
+		return qfalse;
+	}
+
+	for ( i = 0; match[ i ] && needle[ j ]; i++ ) {
+		if ( Con_CompletionLower( match[ i ] ) != Con_CompletionLower( needle[ j ] ) ) {
+			continue;
+		}
+
+		if ( start < 0 ) {
+			start = i;
+		}
+		if ( previous >= 0 ) {
+			gapScore += i - previous - 1;
+		}
+
+		previous = i;
+		j++;
+	}
+
+	if ( needle[ j ] ) {
+		return qfalse;
+	}
+
+	if ( outStart ) {
+		*outStart = start;
+	}
+	if ( outGapScore ) {
+		*outGapScore = gapScore;
+	}
+	if ( outBoundary ) {
+		*outBoundary = Con_IsCompletionBoundary( match, start );
+	}
+
+	return qtrue;
+}
+
+
+static int Con_BoundedCompletionDistance( const char *needle, int needleLen,
+	const char *candidate, int candidateLen, int maxDistance )
+{
+	int prevPrev[MAX_EDIT_LINE + 1];
+	int prev[MAX_EDIT_LINE + 1];
+	int curr[MAX_EDIT_LINE + 1];
+	int i, j;
+
+	if ( needleLen < 1 || candidateLen < 1 ||
+		needleLen > MAX_EDIT_LINE || candidateLen > MAX_EDIT_LINE ) {
+		return maxDistance + 1;
+	}
+
+	if ( ( needleLen > candidateLen ? needleLen - candidateLen : candidateLen - needleLen ) > maxDistance ) {
+		return maxDistance + 1;
+	}
+
+	for ( j = 0; j <= candidateLen; j++ ) {
+		prevPrev[ j ] = j;
+		prev[ j ] = j;
+	}
+
+	for ( i = 1; i <= needleLen; i++ ) {
+		int rowMin;
+
+		curr[ 0 ] = i;
+		rowMin = curr[ 0 ];
+
+		for ( j = 1; j <= candidateLen; j++ ) {
+			int cost = ( Con_CompletionLower( needle[ i - 1 ] ) == Con_CompletionLower( candidate[ j - 1 ] ) ) ? 0 : 1;
+			int best = prev[ j ] + 1;
+
+			if ( curr[ j - 1 ] + 1 < best ) {
+				best = curr[ j - 1 ] + 1;
+			}
+			if ( prev[ j - 1 ] + cost < best ) {
+				best = prev[ j - 1 ] + cost;
+			}
+			if ( i > 1 && j > 1 &&
+				Con_CompletionLower( needle[ i - 1 ] ) == Con_CompletionLower( candidate[ j - 2 ] ) &&
+				Con_CompletionLower( needle[ i - 2 ] ) == Con_CompletionLower( candidate[ j - 1 ] ) &&
+				prevPrev[ j - 2 ] + 1 < best ) {
+				best = prevPrev[ j - 2 ] + 1;
+			}
+
+			curr[ j ] = best;
+			if ( best < rowMin ) {
+				rowMin = best;
+			}
+		}
+
+		if ( rowMin > maxDistance ) {
+			return maxDistance + 1;
+		}
+
+		Com_Memcpy( prevPrev, prev, ( candidateLen + 1 ) * sizeof( prevPrev[ 0 ] ) );
+		Com_Memcpy( prev, curr, ( candidateLen + 1 ) * sizeof( prev[ 0 ] ) );
+	}
+
+	return prev[ candidateLen ];
+}
+
+
+static int Con_GetMaxCompletionDistance( int needleLen ) {
+	if ( needleLen <= 3 ) {
+		return 1;
+	}
+	if ( needleLen <= 6 ) {
+		return 2;
+	}
+
+	return 3;
+}
+
+
+static int Con_FindBestCompletionDistance( const char *match, const char *needle,
+	int maxDistance, int *outStart, qboolean *outBoundary )
+{
+	int start;
+	int needleLen = strlen( needle );
+	int matchLen = strlen( match );
+	int minWindowLen;
+	int maxWindowLen;
+	int bestDistance = maxDistance + 1;
+	int bestStart = -1;
+	qboolean bestBoundary = qfalse;
+
+	if ( needleLen < 3 || matchLen < 1 ) {
+		return -1;
+	}
+
+	minWindowLen = needleLen - maxDistance;
+	if ( minWindowLen < 1 ) {
+		minWindowLen = 1;
+	}
+	maxWindowLen = needleLen + maxDistance;
+
+	for ( start = 0; start < matchLen; start++ ) {
+		int candidateMaxLen = matchLen - start;
+		int windowLen;
+		qboolean boundary = Con_IsCompletionBoundary( match, start );
+
+		for ( windowLen = minWindowLen;
+			windowLen <= maxWindowLen && windowLen <= candidateMaxLen;
+			windowLen++ ) {
+			int limit = ( bestDistance <= maxDistance ) ? bestDistance - 1 : maxDistance;
+			int distance = Con_BoundedCompletionDistance( needle, needleLen,
+				match + start, windowLen, limit );
+
+			if ( distance > maxDistance ) {
+				continue;
+			}
+
+			if ( distance < bestDistance ||
+				( distance == bestDistance && boundary && !bestBoundary ) ||
+				( distance == bestDistance && boundary == bestBoundary && start < bestStart ) ) {
+				bestDistance = distance;
+				bestStart = start;
+				bestBoundary = boundary;
+			}
+		}
+	}
+
+	if ( bestDistance > maxDistance ) {
+		return -1;
+	}
+
+	if ( outStart ) {
+		*outStart = bestStart;
+	}
+	if ( outBoundary ) {
+		*outBoundary = bestBoundary;
+	}
+
+	return bestDistance;
+}
+
+
+static qboolean Con_BuildFuzzyCompletionMatch( const char *match,
+	const conFuzzyCompletionState_t *state, conFuzzyCompletionMatch_t *outMatch )
+{
+	int pos;
+	int start;
+	int metric;
+	qboolean boundary;
+
+	if ( !match || !match[ 0 ] || !state || !outMatch ) {
+		return qfalse;
+	}
+
+	Q_strncpyz( outMatch->match, match, sizeof( outMatch->match ) );
+	outMatch->secondary = strlen( match );
+	outMatch->tertiary = 0;
+
+	if ( Con_FindSubstringCompletion( match, state->needle, &pos, &boundary ) ) {
+		outMatch->category = boundary ? 0 : 1;
+		outMatch->primary = pos;
+		outMatch->tertiary = pos;
+		return qtrue;
+	}
+
+	if ( Con_FindSubsequenceCompletion( match, state->needle, &start, &metric, &boundary ) ) {
+		outMatch->category = boundary ? 2 : 3;
+		outMatch->primary = metric;
+		outMatch->tertiary = start;
+		return qtrue;
+	}
+
+	metric = Con_FindBestCompletionDistance( match, state->needle,
+		state->maxDistance, &start, &boundary );
+	if ( metric >= 0 ) {
+		outMatch->category = boundary ? 4 : 5;
+		outMatch->primary = metric;
+		outMatch->tertiary = start;
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+
+static int QDECL Con_CompareFuzzyCompletionMatches( const void *a, const void *b ) {
+	const conFuzzyCompletionMatch_t *matchA = (const conFuzzyCompletionMatch_t *)a;
+	const conFuzzyCompletionMatch_t *matchB = (const conFuzzyCompletionMatch_t *)b;
+
+	if ( matchA->category != matchB->category ) {
+		return matchA->category - matchB->category;
+	}
+	if ( matchA->primary != matchB->primary ) {
+		return matchA->primary - matchB->primary;
+	}
+	if ( matchA->secondary != matchB->secondary ) {
+		return matchA->secondary - matchB->secondary;
+	}
+	if ( matchA->tertiary != matchB->tertiary ) {
+		return matchA->tertiary - matchB->tertiary;
+	}
+
+	return Q_stricmp( matchA->match, matchB->match );
+}
+
+
+static qboolean Con_CollectFuzzyCompletionMatch( const char *match, void *context ) {
+	conFuzzyCompletionState_t *state = (conFuzzyCompletionState_t *)context;
+	conFuzzyCompletionMatch_t candidate;
+	int i;
+	int worst;
+
+	if ( !state || !Con_BuildFuzzyCompletionMatch( match, state, &candidate ) ) {
+		return qtrue;
+	}
+
+	for ( i = 0; i < state->count; i++ ) {
+		if ( Q_stricmp( state->matches[ i ].match, candidate.match ) != 0 ) {
+			continue;
+		}
+
+		if ( Con_CompareFuzzyCompletionMatches( &candidate, &state->matches[ i ] ) < 0 ) {
+			state->matches[ i ] = candidate;
+		}
+		return qtrue;
+	}
+
+	if ( state->count < CON_COMPLETION_MAX_MATCHES ) {
+		state->matches[ state->count++ ] = candidate;
+		return qtrue;
+	}
+
+	worst = 0;
+	for ( i = 1; i < state->count; i++ ) {
+		if ( Con_CompareFuzzyCompletionMatches( &state->matches[ worst ], &state->matches[ i ] ) < 0 ) {
+			worst = i;
+		}
+	}
+
+	if ( Con_CompareFuzzyCompletionMatches( &candidate, &state->matches[ worst ] ) < 0 ) {
+		state->matches[ worst ] = candidate;
+	}
+
 	return qtrue;
 }
 
@@ -1028,6 +1413,11 @@ static qboolean Con_ShouldHideMatchedCompletionPopup( const char *buffer, int cu
 
 static qboolean Con_CompletionPopupEnabled( void ) {
 	return ( con_completionPopup && con_completionPopup->integer ) ? qtrue : qfalse;
+}
+
+
+qboolean Con_UseAutoSay( void ) {
+	return ( con_autoSay && con_autoSay->integer ) ? qtrue : qfalse;
 }
 
 
@@ -1108,12 +1498,67 @@ static qboolean Con_HasActiveCompletionPopup( void ) {
 static void Con_DismissCompletionPopup( void ) {
 	con.completionCount = 0;
 	con.completionSelection = 0;
+	con.completionScroll = 0;
 	con.completionAppendSpace = qfalse;
 	con.completionPopupVisible = qfalse;
 	con.completionPrependSlash = qfalse;
 	con.completionSnapshotValid = qtrue;
 	con.completionSnapshotCursor = g_consoleField.cursor;
+	con.completionScrollbarDragging = qfalse;
 	Q_strncpyz( con.completionSnapshotBuffer, g_consoleField.buffer, sizeof( con.completionSnapshotBuffer ) );
+}
+
+
+static int Con_GetCompletionVisibleCount( void ) {
+	int visibleCount = con.completionCount;
+
+	if ( visibleCount > CON_COMPLETION_MAX_VISIBLE ) {
+		visibleCount = CON_COMPLETION_MAX_VISIBLE;
+	}
+
+	if ( visibleCount < 0 ) {
+		visibleCount = 0;
+	}
+
+	return visibleCount;
+}
+
+
+static void Con_ClampCompletionScroll( qboolean keepSelectionVisible ) {
+	int visibleCount = Con_GetCompletionVisibleCount();
+	int maxScroll = con.completionCount - visibleCount;
+
+	if ( maxScroll < 0 ) {
+		maxScroll = 0;
+	}
+
+	if ( con.completionScroll < 0 ) {
+		con.completionScroll = 0;
+	} else if ( con.completionScroll > maxScroll ) {
+		con.completionScroll = maxScroll;
+	}
+
+	if ( !keepSelectionVisible || visibleCount < 1 || con.completionCount < 1 ) {
+		return;
+	}
+
+	if ( con.completionSelection < 0 ) {
+		con.completionSelection = 0;
+	} else if ( con.completionSelection >= con.completionCount ) {
+		con.completionSelection = con.completionCount - 1;
+	}
+
+	if ( con.completionSelection < con.completionScroll ) {
+		con.completionScroll = con.completionSelection;
+	} else if ( con.completionSelection >= con.completionScroll + visibleCount ) {
+		con.completionScroll = con.completionSelection - visibleCount + 1;
+	}
+
+	if ( con.completionScroll < 0 ) {
+		con.completionScroll = 0;
+	} else if ( con.completionScroll > maxScroll ) {
+		con.completionScroll = maxScroll;
+	}
 }
 
 
@@ -1127,12 +1572,16 @@ static void Con_MoveCompletionSelection( int delta ) {
 	} else {
 		con.completionSelection = ( con.completionSelection + 1 ) % con.completionCount;
 	}
+
+	Con_ClampCompletionScroll( qtrue );
 }
 
 
 static void Con_RefreshCompletionState( void ) {
+	conFuzzyCompletionState_t fuzzyState;
 	char prefixBuffer[ MAX_EDIT_LINE ];
 	char fullSegment[ MAX_EDIT_LINE ];
+	char needle[MAX_EDIT_LINE];
 	char previousMatch[ MAX_EDIT_LINE ];
 	const char *buffer = g_consoleField.buffer;
 	int cursor = g_consoleField.cursor;
@@ -1143,9 +1592,13 @@ static void Con_RefreshCompletionState( void ) {
 	int argIndex;
 	int currentLen;
 	int i;
+	int strictMatchCount;
+	int tokenOffset = 0;
+	int tokenLength = 0;
 	qboolean appendSpace;
 	qboolean keepPrevious = qfalse;
 	qboolean firstArg = qfalse;
+	qboolean usedFuzzyMatches = qfalse;
 
 	if ( cursor < 0 ) {
 		cursor = 0;
@@ -1156,6 +1609,7 @@ static void Con_RefreshCompletionState( void ) {
 	if ( con.focus != CON_FOCUS_INPUT || con.textDragging ) {
 		con.completionCount = 0;
 		con.completionSelection = 0;
+		con.completionScroll = 0;
 		con.completionAppendSpace = qfalse;
 		con.completionPopupVisible = qfalse;
 		con.completionPrependSlash = qfalse;
@@ -1182,6 +1636,7 @@ static void Con_RefreshCompletionState( void ) {
 
 	con.completionCount = 0;
 	con.completionSelection = 0;
+	con.completionScroll = 0;
 	con.completionAppendSpace = qfalse;
 	con.completionPrependSlash = qfalse;
 
@@ -1197,16 +1652,6 @@ static void Con_RefreshCompletionState( void ) {
 
 	Com_Memcpy( prefixBuffer, buffer + segmentStart, prefixLen );
 	prefixBuffer[ prefixLen ] = '\0';
-
-	appendSpace = qfalse;
-	if ( Field_QueryCompletionMatches( prefixBuffer, &appendSpace, Con_CollectCompletionMatch, NULL ) < 1 ||
-		con.completionCount < 1 ) {
-		con.completionPopupVisible = qfalse;
-		con.completionSnapshotValid = qtrue;
-		con.completionSnapshotCursor = cursor;
-		Q_strncpyz( con.completionSnapshotBuffer, buffer, sizeof( con.completionSnapshotBuffer ) );
-		return;
-	}
 
 	fullLen = segmentEnd - segmentStart;
 	if ( fullLen < 0 ) {
@@ -1242,10 +1687,63 @@ static void Con_RefreshCompletionState( void ) {
 			con.completionReplaceLength = 0;
 			firstArg = qfalse;
 		} else {
-			con.completionReplaceOffset = segmentStart + Cmd_ArgOffset( argIndex );
-			con.completionReplaceLength = strlen( Cmd_Argv( argIndex ) );
+			tokenOffset = Cmd_ArgOffset( argIndex );
+			tokenLength = strlen( Cmd_Argv( argIndex ) );
+
+			if ( argIndex == 0 && tokenLength > 0 &&
+				( fullSegment[ tokenOffset ] == '\\' || fullSegment[ tokenOffset ] == '/' ) ) {
+				tokenOffset++;
+				tokenLength--;
+			}
+
+			con.completionReplaceOffset = segmentStart + tokenOffset;
+			con.completionReplaceLength = tokenLength;
 			firstArg = ( argIndex == 0 ) ? qtrue : qfalse;
 		}
+	}
+
+	appendSpace = qfalse;
+	strictMatchCount = Field_QueryCompletionMatches( prefixBuffer, &appendSpace,
+		Con_CollectCompletionMatch, NULL );
+
+	if ( ( strictMatchCount < 1 || con.completionCount < 1 ) &&
+		con.completionReplaceLength > 0 &&
+		con.completionReplaceOffset >= 0 &&
+		con.completionReplaceOffset + con.completionReplaceLength <= len ) {
+		Com_Memcpy( needle, buffer + con.completionReplaceOffset, con.completionReplaceLength );
+		needle[ con.completionReplaceLength ] = '\0';
+
+		if ( needle[ 0 ] && needle[ 1 ] ) {
+			Com_Memset( &fuzzyState, 0, sizeof( fuzzyState ) );
+			Q_strncpyz( fuzzyState.needle, needle, sizeof( fuzzyState.needle ) );
+			fuzzyState.needleLen = strlen( fuzzyState.needle );
+			fuzzyState.maxDistance = Con_GetMaxCompletionDistance( fuzzyState.needleLen );
+
+			Field_QueryCompletionCandidates( prefixBuffer, Con_CollectFuzzyCompletionMatch, &fuzzyState );
+
+			if ( fuzzyState.count > 0 ) {
+				qsort( fuzzyState.matches, fuzzyState.count,
+					sizeof( fuzzyState.matches[ 0 ] ), Con_CompareFuzzyCompletionMatches );
+
+				for ( i = 0; i < fuzzyState.count; i++ ) {
+					Q_strncpyz( con.completionMatches[ i ], fuzzyState.matches[ i ].match,
+						sizeof( con.completionMatches[ i ] ) );
+				}
+
+				con.completionCount = fuzzyState.count;
+				appendSpace = ( fuzzyState.count == 1 ) ? qtrue : qfalse;
+				usedFuzzyMatches = qtrue;
+			}
+		}
+	}
+
+	if ( con.completionCount < 1 ) {
+		con.completionPopupVisible = qfalse;
+		con.completionScroll = 0;
+		con.completionSnapshotValid = qtrue;
+		con.completionSnapshotCursor = cursor;
+		Q_strncpyz( con.completionSnapshotBuffer, buffer, sizeof( con.completionSnapshotBuffer ) );
+		return;
 	}
 
 	con.completionAppendSpace = appendSpace;
@@ -1253,8 +1751,10 @@ static void Con_RefreshCompletionState( void ) {
 		con.completionReplaceOffset == 0 &&
 		buffer[ 0 ] != '\\' && buffer[ 0 ] != '/' ) ? qtrue : qfalse;
 
-	qsort( con.completionMatches, con.completionCount,
-		sizeof( con.completionMatches[ 0 ] ), Con_CompareCompletionMatches );
+	if ( !usedFuzzyMatches ) {
+		qsort( con.completionMatches, con.completionCount,
+			sizeof( con.completionMatches[ 0 ] ), Con_CompareCompletionMatches );
+	}
 
 	if ( keepPrevious ) {
 		for ( i = 0; i < con.completionCount; i++ ) {
@@ -1279,6 +1779,7 @@ static void Con_RefreshCompletionState( void ) {
 	if ( Con_ShouldHideMatchedCompletionPopup( buffer, cursor ) ) {
 		con.completionCount = 0;
 		con.completionSelection = 0;
+		con.completionScroll = 0;
 		con.completionAppendSpace = qfalse;
 		con.completionPopupVisible = qfalse;
 		con.completionPrependSlash = qfalse;
@@ -1287,6 +1788,8 @@ static void Con_RefreshCompletionState( void ) {
 		Q_strncpyz( con.completionSnapshotBuffer, buffer, sizeof( con.completionSnapshotBuffer ) );
 		return;
 	}
+
+	Con_ClampCompletionScroll( qtrue );
 
 	con.completionSnapshotValid = qtrue;
 	con.completionSnapshotCursor = cursor;
@@ -1358,7 +1861,7 @@ static void Con_ApplySelectedCompletion( int direction ) {
 	}
 
 	if ( con.completionPrependSlash ) {
-		completed[ outLen++ ] = '\\';
+		completed[ outLen++ ] = '/';
 	}
 
 	copyLen = replaceOffset;
@@ -1715,12 +2218,112 @@ static qboolean Con_GetScrollRange( int *minDisplay, int *maxDisplay, int *fille
 }
 
 
+static void Con_GetScrollbarFrameGeometry( float areaX, float areaW, float areaY, float areaH, float hoverFrac,
+	float *trackX, float *trackY, float *trackW, float *trackH, float *hitX, float *hitW ) {
+	float width;
+	float maxWidth;
+
+	maxWidth = CON_SCROLLBAR_BASE_WIDTH + CON_SCROLLBAR_HOVER_GROW;
+	width = CON_SCROLLBAR_BASE_WIDTH + CON_SCROLLBAR_HOVER_GROW * hoverFrac;
+
+	if ( trackX ) {
+		*trackX = areaX + areaW - CON_SCROLLBAR_SIDE_PAD - width;
+	}
+	if ( trackY ) {
+		*trackY = areaY;
+	}
+	if ( trackW ) {
+		*trackW = width;
+	}
+	if ( trackH ) {
+		*trackH = areaH;
+	}
+	if ( hitX ) {
+		*hitX = areaX + areaW - CON_SCROLLBAR_SIDE_PAD - maxWidth - CON_SCROLLBAR_HIT_PAD;
+	}
+	if ( hitW ) {
+		*hitW = maxWidth + CON_SCROLLBAR_HIT_PAD * 2.0f;
+	}
+}
+
+
+static void Con_GetScrollbarThumbGeometry( float trackY, float trackH, int visibleCount, int filled, float displayFrac,
+	float *thumbY, float *thumbH ) {
+	float height = trackH;
+
+	if ( filled > 0 && visibleCount > 0 ) {
+		height = trackH * ( (float)visibleCount / (float)filled );
+		if ( height < CON_SCROLLBAR_MIN_THUMB ) {
+			height = CON_SCROLLBAR_MIN_THUMB;
+		}
+		if ( height > trackH ) {
+			height = trackH;
+		}
+	}
+
+	if ( thumbH ) {
+		*thumbH = height;
+	}
+
+	if ( thumbY ) {
+		if ( trackH <= height ) {
+			*thumbY = trackY;
+		} else {
+			if ( displayFrac < 0.0f ) {
+				displayFrac = 0.0f;
+			} else if ( displayFrac > 1.0f ) {
+				displayFrac = 1.0f;
+			}
+			*thumbY = trackY + ( trackH - height ) * displayFrac;
+		}
+	}
+}
+
+
+static void Con_DrawScrollbarVisual( float trackX, float trackY, float trackW, float trackH,
+	float thumbY, float thumbH, float hoverFrac, float alphaScale, const vec4_t lineColor ) {
+	vec4_t trackColor;
+	vec4_t thumbColor;
+
+	trackColor[ 0 ] = lineColor[ 0 ];
+	trackColor[ 1 ] = lineColor[ 1 ];
+	trackColor[ 2 ] = lineColor[ 2 ];
+	trackColor[ 3 ] = 0.14f + hoverFrac * 0.08f;
+
+	Con_LightenColor( lineColor, 0.18f + hoverFrac * 0.3f, thumbColor );
+	thumbColor[ 3 ] = 0.6f + hoverFrac * 0.2f;
+
+	Con_DrawSolidRect( trackX, trackY, trackW, trackH, trackColor, alphaScale );
+	Con_DrawSolidRect( trackX, thumbY, trackW, thumbH, thumbColor, alphaScale );
+}
+
+
+static void Con_UpdateScrollbarHoverValue( float *hoverFrac, qboolean dragging, qboolean hot ) {
+	float target = ( dragging || hot ) ? 1.0f : 0.0f;
+	float step = cls.realFrametime * 0.001f * CON_SCROLLBAR_LERP_SPEED;
+
+	if ( step > 1.0f ) {
+		step = 1.0f;
+	}
+
+	if ( *hoverFrac < target ) {
+		*hoverFrac += step;
+		if ( *hoverFrac > target ) {
+			*hoverFrac = target;
+		}
+	} else if ( *hoverFrac > target ) {
+		*hoverFrac -= step;
+		if ( *hoverFrac < target ) {
+			*hoverFrac = target;
+		}
+	}
+}
+
+
 static qboolean Con_GetScrollbarGeometry( float hoverFrac, float *trackX, float *trackY, float *trackW, float *trackH,
 	float *thumbY, float *thumbH, float *hitX, float *hitW ) {
 	float consoleX, consoleY, consoleW, consoleH;
 	float logX, logY, logW, logH;
-	float width;
-	float maxWidth;
 	float displayFrac;
 	int minDisplay, maxDisplay, filled;
 
@@ -1738,51 +2341,16 @@ static qboolean Con_GetScrollbarGeometry( float hoverFrac, float *trackX, float 
 		return qfalse;
 	}
 
-	maxWidth = CON_SCROLLBAR_BASE_WIDTH + CON_SCROLLBAR_HOVER_GROW;
-	width = CON_SCROLLBAR_BASE_WIDTH + CON_SCROLLBAR_HOVER_GROW * hoverFrac;
+	Con_GetScrollbarFrameGeometry( consoleX, consoleW, logY, logH, hoverFrac,
+		trackX, trackY, trackW, trackH, hitX, hitW );
 
-	if ( trackX ) {
-		*trackX = consoleX + consoleW - CON_SCROLLBAR_SIDE_PAD - width;
-	}
-	if ( trackY ) {
-		*trackY = logY;
-	}
-	if ( trackW ) {
-		*trackW = width;
-	}
-	if ( trackH ) {
-		*trackH = logH;
-	}
-	if ( hitX ) {
-		*hitX = consoleX + consoleW - CON_SCROLLBAR_SIDE_PAD - maxWidth - CON_SCROLLBAR_HIT_PAD;
-	}
-	if ( hitW ) {
-		*hitW = maxWidth + CON_SCROLLBAR_HIT_PAD * 2.0f;
+	if ( maxDisplay <= minDisplay ) {
+		displayFrac = 1.0f;
+	} else {
+		displayFrac = ( con.displayLine - minDisplay ) / (float)( maxDisplay - minDisplay );
 	}
 
-	if ( thumbH ) {
-		*thumbH = logH * ( (float)con.vispage / (float)filled );
-		if ( *thumbH < CON_SCROLLBAR_MIN_THUMB ) {
-			*thumbH = CON_SCROLLBAR_MIN_THUMB;
-		}
-		if ( *thumbH > logH ) {
-			*thumbH = logH;
-		}
-	}
-
-	if ( thumbY ) {
-		if ( maxDisplay <= minDisplay || logH <= *thumbH ) {
-			*thumbY = logY;
-		} else {
-			displayFrac = ( con.displayLine - minDisplay ) / (float)( maxDisplay - minDisplay );
-			if ( displayFrac < 0.0f ) {
-				displayFrac = 0.0f;
-			} else if ( displayFrac > 1.0f ) {
-				displayFrac = 1.0f;
-			}
-			*thumbY = logY + ( logH - *thumbH ) * displayFrac;
-		}
-	}
+	Con_GetScrollbarThumbGeometry( logY, logH, con.vispage, filled, displayFrac, thumbY, thumbH );
 
 	return qtrue;
 }
@@ -1877,12 +2445,56 @@ static void Con_UpdateScrollbarDrag( void ) {
 }
 
 
+static void Con_SetCompletionScrollFrac( float frac ) {
+	int visibleCount = Con_GetCompletionVisibleCount();
+	int maxScroll = con.completionCount - visibleCount;
+
+	if ( maxScroll <= 0 ) {
+		con.completionScroll = 0;
+		return;
+	}
+
+	if ( frac < 0.0f ) {
+		frac = 0.0f;
+	} else if ( frac > 1.0f ) {
+		frac = 1.0f;
+	}
+
+	con.completionScroll = (int)( frac * maxScroll + 0.5f );
+	Con_ClampCompletionScroll( qfalse );
+}
+
+
+static void Con_UpdateCompletionScrollbarDrag( void ) {
+	float trackX, trackY, trackW, trackH;
+	float thumbY, thumbH;
+	float frac;
+
+	if ( !con.completionScrollbarDragging || !keys[ K_MOUSE1 ].down ) {
+		return;
+	}
+
+	if ( !Con_GetCompletionScrollbarGeometry( con.completionScrollbarHover,
+		&trackX, &trackY, &trackW, &trackH, &thumbY, &thumbH, NULL, NULL ) ) {
+		con.completionScrollbarDragging = qfalse;
+		return;
+	}
+
+	if ( trackH <= thumbH ) {
+		con.completionScroll = 0;
+		return;
+	}
+
+	frac = ( con.mouseY - con.completionScrollbarDragOffset - trackY ) / ( trackH - thumbH );
+	Con_SetCompletionScrollFrac( frac );
+}
+
+
 static void Con_UpdateScrollbarHover( void ) {
 	float trackX, trackY, trackW, trackH;
 	float thumbY, thumbH;
 	float hitX, hitW;
-	float target;
-	float step;
+	qboolean hot = qfalse;
 
 	if ( !keys[ K_MOUSE1 ].down ) {
 		con.scrollbarDragging = qfalse;
@@ -1890,34 +2502,45 @@ static void Con_UpdateScrollbarHover( void ) {
 
 	Con_ClampMouseToConsole();
 
-	target = 0.0f;
 	if ( ( Key_GetCatcher() & KEYCATCH_CONSOLE ) &&
 		Con_GetScrollbarGeometry( con.scrollbarHover, &trackX, &trackY, &trackW, &trackH, &thumbY, &thumbH, &hitX, &hitW ) ) {
 		if ( con.scrollbarDragging ||
 			( con.mouseX >= hitX && con.mouseX <= hitX + hitW &&
 			  con.mouseY >= trackY && con.mouseY <= trackY + trackH ) ) {
-			target = 1.0f;
+			hot = qtrue;
 		}
 	}
 
-	step = cls.realFrametime * 0.001f * CON_SCROLLBAR_LERP_SPEED;
-	if ( step > 1.0f ) {
-		step = 1.0f;
-	}
-
-	if ( con.scrollbarHover < target ) {
-		con.scrollbarHover += step;
-		if ( con.scrollbarHover > target ) {
-			con.scrollbarHover = target;
-		}
-	} else if ( con.scrollbarHover > target ) {
-		con.scrollbarHover -= step;
-		if ( con.scrollbarHover < target ) {
-			con.scrollbarHover = target;
-		}
-	}
+	Con_UpdateScrollbarHoverValue( &con.scrollbarHover, con.scrollbarDragging, hot );
 
 	Con_UpdateScrollbarDrag();
+}
+
+
+static void Con_UpdateCompletionScrollbarHover( void ) {
+	float trackX, trackY, trackW, trackH;
+	float thumbY, thumbH;
+	float hitX, hitW;
+	qboolean hot = qfalse;
+
+	if ( !keys[ K_MOUSE1 ].down ) {
+		con.completionScrollbarDragging = qfalse;
+	}
+
+	Con_ClampMouseToConsole();
+
+	if ( ( Key_GetCatcher() & KEYCATCH_CONSOLE ) &&
+		Con_GetCompletionScrollbarGeometry( con.completionScrollbarHover,
+			&trackX, &trackY, &trackW, &trackH, &thumbY, &thumbH, &hitX, &hitW ) ) {
+		if ( con.completionScrollbarDragging ||
+			( con.mouseX >= hitX && con.mouseX <= hitX + hitW &&
+			  con.mouseY >= trackY && con.mouseY <= trackY + trackH ) ) {
+			hot = qtrue;
+		}
+	}
+
+	Con_UpdateScrollbarHoverValue( &con.completionScrollbarHover, con.completionScrollbarDragging, hot );
+	Con_UpdateCompletionScrollbarDrag();
 }
 
 
@@ -2129,6 +2752,8 @@ static qboolean Con_GetCompletionPopupGeometry( float *popupX, float *popupY, fl
 	float x, y;
 	float outPopupX, outPopupY;
 	float outPopupW, outPopupH;
+	float scrollbarReserve = 0.0f;
+	char cvarValue[ MAX_CVAR_VALUE_STRING ];
 	int outFirst;
 	int outVisibleCount;
 	int maxChars;
@@ -2147,25 +2772,18 @@ static qboolean Con_GetCompletionPopupGeometry( float *popupX, float *popupY, fl
 	}
 	con.completionPopupVisible = qtrue;
 
-	outVisibleCount = con.completionCount;
-	if ( outVisibleCount > CON_COMPLETION_MAX_VISIBLE ) {
-		outVisibleCount = CON_COMPLETION_MAX_VISIBLE;
-	}
-
-	outFirst = 0;
-	if ( con.completionSelection >= outVisibleCount ) {
-		outFirst = con.completionSelection - outVisibleCount + 1;
-		if ( outFirst > con.completionCount - outVisibleCount ) {
-			outFirst = con.completionCount - outVisibleCount;
-		}
-	}
-	if ( outFirst < 0 ) {
-		outFirst = 0;
-	}
+	outVisibleCount = Con_GetCompletionVisibleCount();
+	Con_ClampCompletionScroll( qfalse );
+	outFirst = con.completionScroll;
 
 	longest = 0;
-	for ( i = 0; i < outVisibleCount; i++ ) {
-		int matchLen = strlen( con.completionMatches[ outFirst + i ] );
+	for ( i = 0; i < con.completionCount; i++ ) {
+		int matchLen = strlen( con.completionMatches[ i ] );
+		qboolean modified;
+
+		if ( Con_GetCompletionCvarInfo( con.completionMatches[ i ], cvarValue, sizeof( cvarValue ), &modified ) ) {
+			matchLen += 3 + strlen( cvarValue );
+		}
 
 		if ( matchLen > longest ) {
 			longest = matchLen;
@@ -2184,7 +2802,12 @@ static qboolean Con_GetCompletionPopupGeometry( float *popupX, float *popupY, fl
 		longest = maxChars;
 	}
 
-	outPopupW = ( longest + 2 ) * smallchar_width;
+	if ( con.completionCount > outVisibleCount ) {
+		scrollbarReserve = CON_SCROLLBAR_BASE_WIDTH + CON_SCROLLBAR_HOVER_GROW +
+			CON_SCROLLBAR_SIDE_PAD * 2.0f + 1.0f;
+	}
+
+	outPopupW = ( longest + 2 ) * smallchar_width + scrollbarReserve;
 	outPopupH = outVisibleCount * smallchar_height + 4.0f;
 	x = con.xadjust + 2 * smallchar_width;
 	y = con.vislines - ( smallchar_height * Con_GetFooterRows() );
@@ -2224,6 +2847,42 @@ static qboolean Con_GetCompletionPopupGeometry( float *popupX, float *popupY, fl
 }
 
 
+static qboolean Con_GetCompletionScrollbarGeometry( float hoverFrac, float *trackX, float *trackY, float *trackW, float *trackH,
+	float *thumbY, float *thumbH, float *hitX, float *hitW ) {
+	float popupX, popupY, popupW, popupH;
+	float contentY, contentH;
+	float displayFrac;
+	int first;
+	int visibleCount;
+	int maxScroll;
+
+	if ( !Con_GetCompletionPopupGeometry( &popupX, &popupY, &popupW, &popupH, &first, &visibleCount ) ) {
+		return qfalse;
+	}
+
+	if ( con.completionCount <= visibleCount || visibleCount < 1 ) {
+		return qfalse;
+	}
+
+	contentY = popupY + 2.0f;
+	contentH = visibleCount * smallchar_height;
+	Con_GetScrollbarFrameGeometry( popupX + 1.0f, popupW - 2.0f, contentY, contentH, hoverFrac,
+		trackX, trackY, trackW, trackH, hitX, hitW );
+
+	maxScroll = con.completionCount - visibleCount;
+	if ( maxScroll <= 0 ) {
+		displayFrac = 0.0f;
+	} else {
+		displayFrac = (float)first / (float)maxScroll;
+	}
+
+	Con_GetScrollbarThumbGeometry( contentY, contentH, visibleCount, con.completionCount, displayFrac,
+		thumbY, thumbH );
+
+	return qtrue;
+}
+
+
 static qboolean Con_GetCompletionSelectionFromMouse( int *selection ) {
 	float popupX, popupY, popupW, popupH;
 	int first, visibleCount;
@@ -2249,17 +2908,66 @@ static qboolean Con_GetCompletionSelectionFromMouse( int *selection ) {
 }
 
 
+static qboolean Con_GetCompletionCvarInfo( const char *match, char *value, int valueSize, qboolean *modified ) {
+	unsigned flags;
+
+	if ( modified ) {
+		*modified = qfalse;
+	}
+
+	if ( value && valueSize > 0 ) {
+		value[ 0 ] = '\0';
+	}
+
+	if ( !match || !match[ 0 ] ) {
+		return qfalse;
+	}
+
+	flags = Cvar_Flags( match );
+	if ( flags & CVAR_NONEXISTENT ) {
+		return qfalse;
+	}
+
+	if ( modified ) {
+		*modified = ( flags & CVAR_MODIFIED ) ? qtrue : qfalse;
+	}
+
+	if ( value && valueSize > 0 ) {
+		if ( flags & CVAR_PRIVATE ) {
+			Q_strncpyz( value, "<private>", valueSize );
+		} else {
+			Cvar_VariableStringBuffer( match, value, valueSize );
+			if ( !value[ 0 ] ) {
+				Q_strncpyz( value, "\"\"", valueSize );
+			}
+		}
+	}
+
+	return qtrue;
+}
+
+
 static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const vec4_t lineColor ) {
 	float popupX, popupY;
 	float popupW, popupH;
+	float trackX, trackY, trackW, trackH;
+	float thumbY, thumbH;
+	float textStartX, textRightX;
+	float rowWidth;
+	float valueRightX;
 	int first;
 	int visibleCount;
 	int maxDrawChars;
 	int i;
+	qboolean hasScrollbar;
+	const int valueSeparatorChars = 3;
 	vec4_t backgroundColor;
 	vec4_t borderColor;
 	vec4_t selectionColor;
 	vec4_t textColor;
+	vec4_t valueColor;
+	vec4_t modifiedValueColor;
+	vec4_t modifiedValueBg;
 
 	(void)x;
 	(void)y;
@@ -2267,9 +2975,18 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 	if ( !Con_GetCompletionPopupGeometry( &popupX, &popupY, &popupW, &popupH, &first, &visibleCount ) ) {
 		return;
 	}
-	maxDrawChars = (int)( popupW / smallchar_width ) - 2;
+	hasScrollbar = Con_GetCompletionScrollbarGeometry( con.completionScrollbarHover,
+		&trackX, &trackY, &trackW, &trackH, &thumbY, &thumbH, NULL, NULL );
+	textStartX = popupX + smallchar_width;
+	textRightX = hasScrollbar ? ( trackX - CON_SCROLLBAR_SIDE_PAD ) : ( popupX + popupW - smallchar_width );
+	valueRightX = textRightX;
+	maxDrawChars = (int)( ( textRightX - textStartX ) / smallchar_width );
 	if ( maxDrawChars < 1 ) {
 		maxDrawChars = 1;
+	}
+	rowWidth = textRightX - ( popupX + 1.0f );
+	if ( rowWidth < 1.0f ) {
+		rowWidth = 1.0f;
 	}
 
 	backgroundColor[ 0 ] = 0.0f;
@@ -2284,6 +3001,16 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 	textColor[ 1 ] = 1.0f;
 	textColor[ 2 ] = 1.0f;
 	textColor[ 3 ] = 0.95f;
+	Con_LightenColor( lineColor, 0.42f, valueColor );
+	valueColor[ 3 ] = 0.72f;
+	modifiedValueColor[ 0 ] = 1.0f;
+	modifiedValueColor[ 1 ] = 0.84f;
+	modifiedValueColor[ 2 ] = 0.46f;
+	modifiedValueColor[ 3 ] = 0.98f;
+	modifiedValueBg[ 0 ] = modifiedValueColor[ 0 ];
+	modifiedValueBg[ 1 ] = modifiedValueColor[ 1 ];
+	modifiedValueBg[ 2 ] = modifiedValueColor[ 2 ];
+	modifiedValueBg[ 3 ] = 0.14f;
 
 	Con_DrawSolidRect( popupX, popupY, popupW, popupH, backgroundColor, alphaScale );
 	Con_DrawSolidRect( popupX, popupY, popupW, 1.0f, borderColor, alphaScale );
@@ -2293,33 +3020,81 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 
 	for ( i = 0; i < visibleCount; i++ ) {
 		const char *match = con.completionMatches[ first + i ];
+		char cvarValue[ MAX_CVAR_VALUE_STRING ];
 		float rowY = popupY + 2.0f + i * smallchar_height;
-		int drawLen = strlen( match );
+		int nameDrawLen = strlen( match );
+		int availableChars = maxDrawChars;
+		int valueDrawLen = 0;
+		int separatorChars = 0;
+		int nameCharsAvailable = maxDrawChars;
+		float valueX = valueRightX;
+		float separatorX = valueRightX;
+		qboolean cvarModified = qfalse;
+		qboolean isCvar = Con_GetCompletionCvarInfo( match, cvarValue, sizeof( cvarValue ), &cvarModified );
 		int j;
 
-		if ( drawLen > maxDrawChars ) {
-			drawLen = maxDrawChars;
+		if ( isCvar && availableChars > 6 ) {
+			valueDrawLen = strlen( cvarValue );
+			if ( valueDrawLen > availableChars - 4 ) {
+				valueDrawLen = availableChars - 4;
+			}
+			if ( valueDrawLen < 0 ) {
+				valueDrawLen = 0;
+			}
+			if ( valueDrawLen > 0 ) {
+				separatorChars = valueSeparatorChars;
+				nameCharsAvailable = availableChars - separatorChars - valueDrawLen;
+				if ( nameCharsAvailable < 1 ) {
+					nameCharsAvailable = 1;
+					valueDrawLen = availableChars - separatorChars - nameCharsAvailable;
+					if ( valueDrawLen < 0 ) {
+						valueDrawLen = 0;
+						separatorChars = 0;
+					}
+				}
+				valueX = valueRightX - valueDrawLen * smallchar_width;
+				separatorX = valueX - separatorChars * smallchar_width;
+			}
+		}
+
+		if ( nameDrawLen > nameCharsAvailable ) {
+			nameDrawLen = nameCharsAvailable;
 		}
 
 		if ( first + i == con.completionSelection ) {
-			Con_DrawSolidRect( popupX + 1.0f, rowY, popupW - 2.0f, smallchar_height,
+			Con_DrawSolidRect( popupX + 1.0f, rowY, rowWidth, smallchar_height,
 				selectionColor, alphaScale );
 		}
 
 		Con_SetScaledColor( textColor, alphaScale );
-		for ( j = 0; j < drawLen; j++ ) {
+		for ( j = 0; j < nameDrawLen; j++ ) {
 			Con_DrawSmallCharFloat( popupX + smallchar_width + j * smallchar_width, rowY, match[ j ] );
+		}
+
+		if ( valueDrawLen > 0 ) {
+			if ( cvarModified ) {
+				Con_DrawSolidRect( separatorX - 0.5f * smallchar_width, rowY + 1.0f,
+					( separatorChars + valueDrawLen + 1 ) * smallchar_width, smallchar_height - 2.0f,
+					modifiedValueBg, alphaScale );
+			}
+
+			Con_SetScaledColor( cvarModified ? modifiedValueColor : valueColor, alphaScale );
+
+			if ( separatorChars >= valueSeparatorChars ) {
+				Con_DrawSmallCharFloat( separatorX, rowY, ' ' );
+				Con_DrawSmallCharFloat( separatorX + smallchar_width, rowY, '=' );
+				Con_DrawSmallCharFloat( separatorX + 2.0f * smallchar_width, rowY, ' ' );
+			}
+
+			for ( j = 0; j < valueDrawLen; j++ ) {
+				Con_DrawSmallCharFloat( valueX + j * smallchar_width, rowY, cvarValue[ j ] );
+			}
 		}
 	}
 
-	if ( first > 0 ) {
-		Con_SetScaledColor( borderColor, alphaScale );
-		Con_DrawSmallCharFloat( popupX + popupW - 2.0f * smallchar_width, popupY + 2.0f, '^' );
-	}
-	if ( first + visibleCount < con.completionCount ) {
-		Con_SetScaledColor( borderColor, alphaScale );
-		Con_DrawSmallCharFloat( popupX + popupW - 2.0f * smallchar_width,
-			popupY + popupH - smallchar_height - 2.0f, 'v' );
+	if ( hasScrollbar ) {
+		Con_DrawScrollbarVisual( trackX, trackY, trackW, trackH, thumbY, thumbH,
+			con.completionScrollbarHover, alphaScale, lineColor );
 	}
 
 	re.SetColor( NULL );
@@ -2329,23 +3104,13 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 static void Con_DrawScrollbar( float alphaScale, const vec4_t lineColor ) {
 	float trackX, trackY, trackW, trackH;
 	float thumbY, thumbH;
-	vec4_t trackColor;
-	vec4_t thumbColor;
 
 	if ( !Con_GetScrollbarGeometry( con.scrollbarHover, &trackX, &trackY, &trackW, &trackH, &thumbY, &thumbH, NULL, NULL ) ) {
 		return;
 	}
 
-	trackColor[ 0 ] = lineColor[ 0 ];
-	trackColor[ 1 ] = lineColor[ 1 ];
-	trackColor[ 2 ] = lineColor[ 2 ];
-	trackColor[ 3 ] = 0.14f + con.scrollbarHover * 0.08f;
-
-	Con_LightenColor( lineColor, 0.18f + con.scrollbarHover * 0.3f, thumbColor );
-	thumbColor[ 3 ] = 0.6f + con.scrollbarHover * 0.2f;
-
-	Con_DrawSolidRect( trackX, trackY, trackW, trackH, trackColor, alphaScale );
-	Con_DrawSolidRect( trackX, thumbY, trackW, thumbH, thumbColor, alphaScale );
+	Con_DrawScrollbarVisual( trackX, trackY, trackW, trackH, thumbY, thumbH,
+		con.scrollbarHover, alphaScale, lineColor );
 }
 
 
@@ -2532,18 +3297,22 @@ qboolean Con_InputKey( int key ) {
 			if ( con.completionSelection < 0 ) {
 				con.completionSelection = 0;
 			}
+			Con_ClampCompletionScroll( qtrue );
 			return qtrue;
 		case K_PGDN:
 			con.completionSelection += CON_COMPLETION_MAX_VISIBLE;
 			if ( con.completionSelection >= con.completionCount ) {
 				con.completionSelection = con.completionCount - 1;
 			}
+			Con_ClampCompletionScroll( qtrue );
 			return qtrue;
 		case K_HOME:
 			con.completionSelection = 0;
+			Con_ClampCompletionScroll( qtrue );
 			return qtrue;
 		case K_END:
 			con.completionSelection = con.completionCount - 1;
+			Con_ClampCompletionScroll( qtrue );
 			return qtrue;
 		case K_ENTER:
 		case K_KP_ENTER:
@@ -2696,6 +3465,11 @@ void Con_MouseEvent( int dx, int dy ) {
 		return;
 	}
 
+	if ( con.completionScrollbarDragging ) {
+		Con_UpdateCompletionScrollbarDrag();
+		return;
+	}
+
 	if ( con.textDragPending && keys[ K_MOUSE1 ].down ) {
 		moveX = fabs( con.mouseX - con.textDragStartMouseX );
 		moveY = fabs( con.mouseY - con.textDragStartMouseY );
@@ -2736,6 +3510,7 @@ qboolean Con_KeyEvent( int key, qboolean down ) {
 	if ( !down ) {
 		if ( key == K_MOUSE1 ) {
 			con.scrollbarDragging = qfalse;
+			con.completionScrollbarDragging = qfalse;
 			con.inputSelecting = qfalse;
 			con.logSelecting = qfalse;
 			if ( con.textDragging ) {
@@ -2758,9 +3533,37 @@ qboolean Con_KeyEvent( int key, qboolean down ) {
 
 	Con_ClampMouseToConsole();
 
+	if ( key == K_MOUSE1 ) {
+		float completionTrackX, completionTrackY, completionTrackW, completionTrackH;
+		float completionThumbY, completionThumbH;
+		float completionHitX, completionHitW;
+
+		if ( Con_GetCompletionScrollbarGeometry( con.completionScrollbarHover,
+			&completionTrackX, &completionTrackY, &completionTrackW, &completionTrackH,
+			&completionThumbY, &completionThumbH, &completionHitX, &completionHitW ) &&
+			con.mouseX >= completionHitX && con.mouseX <= completionHitX + completionHitW &&
+			con.mouseY >= completionTrackY && con.mouseY <= completionTrackY + completionTrackH ) {
+			Con_ClearTextDragState();
+			con.scrollbarDragging = qfalse;
+			con.completionScrollbarDragging = qtrue;
+			con.inputSelecting = qfalse;
+			con.logSelecting = qfalse;
+
+			if ( con.mouseY >= completionThumbY && con.mouseY <= completionThumbY + completionThumbH ) {
+				con.completionScrollbarDragOffset = con.mouseY - completionThumbY;
+			} else {
+				con.completionScrollbarDragOffset = completionThumbH * 0.5f;
+				Con_UpdateCompletionScrollbarDrag();
+			}
+
+			return qtrue;
+		}
+	}
+
 	if ( key == K_MOUSE1 && Con_GetCompletionSelectionFromMouse( &completionSelection ) ) {
 		Con_ClearTextDragState();
 		con.scrollbarDragging = qfalse;
+		con.completionScrollbarDragging = qfalse;
 		con.inputSelecting = qfalse;
 		con.logSelecting = qfalse;
 		con.completionSelection = completionSelection;
@@ -3388,6 +4191,9 @@ void Con_Init( void )
 	con_completionPopup = Cvar_Get( "con_completionPopup", "1", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_completionPopup, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( con_completionPopup, "Show the live console completion popup while typing. Disable to keep classic Tab completion behavior." );
+	con_autoSay = Cvar_Get( "con_autoSay", "0", CVAR_ARCHIVE_ND );
+	Cvar_CheckRange( con_autoSay, "0", "1", CV_INTEGER );
+	Cvar_SetDescription( con_autoSay, "Implicitly treat slashless console input as say text while in-game. Disabled by default so bare input executes as a command." );
 	con_sayRaw = Cvar_Get( "con_sayRaw", "0", CVAR_ARCHIVE_ND );
 	Cvar_CheckRange( con_sayRaw, "0", "1", CV_INTEGER );
 	Cvar_SetDescription( con_sayRaw, "Use quoted raw console input for in-game plain-text say chat instead of legacy cmd say tokenization. Disabled by default." );
@@ -3853,6 +4659,7 @@ static void Con_DrawSolidConsole( float frac ) {
 	// draw the text
 	con.vislines = lines;
 	Con_UpdateScrollbarHover();
+	Con_UpdateCompletionScrollbarHover();
 	rows = Con_GetLogRowCount();	// rows of text to draw
 
 	markerY = lines - ( smallchar_height * ( statusRows + 1 ) );

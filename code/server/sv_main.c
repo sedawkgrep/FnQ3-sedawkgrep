@@ -1281,7 +1281,7 @@ Player movement occurs as a result of packet events, which
 happen before SV_Frame is called
 ==================
 */
-void SV_Frame( int msec ) {
+void SV_Frame( int msec, int realMsec ) {
 	int		frameMsec;
 	int		startTime;
 	int		i;
@@ -1307,20 +1307,20 @@ void SV_Frame( int msec ) {
 		return;
 	}
 
+	svs.time += realMsec;
+
 	// allow pause if only the local client is connected
 	if ( SV_CheckPaused() ) {
 		return;
 	}
 
 	// if it isn't time for the next frame, do nothing
-
-	frameMsec = 1000 / sv_fps->integer * com_timescale->value;
-	// don't let it scale below 1ms
-	if(frameMsec < 1)
-	{
-		Cvar_Set( "timescale", va( "%f", sv_fps->value / 1000.0f ) );
-		Com_DPrintf( "timescale adjusted to %f\n", com_timescale->value );
-		frameMsec = 1;
+	frameMsec = 0;
+	if ( com_timescale->value > 0.0f ) {
+		frameMsec = (int)( 1000.0f / sv_fps->value * com_timescale->value );
+		if ( frameMsec < 1 ) {
+			frameMsec = 1;
+		}
 	}
 
 	sv.timeResidual += msec;
@@ -1381,9 +1381,8 @@ void SV_Frame( int msec ) {
 	if (com_dedicated->integer) SV_BotFrame (sv.time);
 
 	// run the game simulation in chunks
-	while ( sv.timeResidual >= frameMsec ) {
+	while ( frameMsec > 0 && sv.timeResidual >= frameMsec ) {
 		sv.timeResidual -= frameMsec;
-		svs.time += frameMsec;
 		sv.time += frameMsec;
 
 		// let everything in the world think and move
@@ -1437,7 +1436,7 @@ int SV_RateMsec( const client_t *client )
 #endif
 		messageSize += UDPIP_HEADER_SIZE;
 		
-	rateMsec = messageSize * 1000 / ((int) (client->rate * com_timescale->value));
+	rateMsec = messageSize * 1000 / client->rate;
 	rate = Sys_Milliseconds() - client->netchan.lastSentTime;
 	
 	if ( rate > rateMsec )
