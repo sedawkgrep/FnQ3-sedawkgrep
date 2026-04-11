@@ -31,11 +31,13 @@ FnQuake3 is a modernized Quake III Arena engine project built around a simple go
 - SDL3 support for video, audio, and input on modern platforms.
 - OpenAL is the default audio backend, with device selection, spatial reverb, occlusion, and an easy fallback to the original mixer. See the [Audio guide](docs/AUDIO.md).
 - Compatibility-first engine work that keeps retail assets, protocol behavior, and demos at the center of the project.
+- Compatibility support for older Quake 3 IHV / q3test `IBSP v43` maps alongside standard retail Quake III Arena BSP content.
 - Multiple renderer and platform targets aimed at practical performance across older and newer systems.
 
 ## Credits
 
 - CPMA/CNQ3-style rainbow text color escape support is adapted from the CPMADevs CNQ3 project.
+- IBSP v43 / Quake 3 IHV map loading support is adapted from Spearmint's `bsp_q3ihv.c` implementation.
 
 ## Quick Start
 

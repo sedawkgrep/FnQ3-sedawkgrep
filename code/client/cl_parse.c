@@ -37,9 +37,362 @@ static const char *svc_strings[] = {
 	"svc_voipOpus",  // ioq3 extension
 };
 
+static void CL_ValidateReliableAcknowledge( void ) {
+	if ( clc.reliableSequence - clc.reliableAcknowledge > MAX_RELIABLE_COMMANDS ) {
+		if ( !clc.demoplaying ) {
+			Com_Printf( S_COLOR_YELLOW "WARNING: dropping %i commands from server\n", clc.reliableSequence - clc.reliableAcknowledge );
+		}
+		clc.reliableAcknowledge = clc.reliableSequence;
+	} else if ( clc.reliableSequence - clc.reliableAcknowledge < 0 ) {
+		if ( clc.demoplaying ) {
+			clc.reliableSequence = clc.reliableAcknowledge;
+		} else {
+			Com_Error( ERR_DROP, "%s: incorrect reliable sequence acknowledge number", __func__ );
+		}
+	}
+}
+
 static void SHOWNET( msg_t *msg, const char *s ) {
 	if ( cl_shownet->integer >= 2) {
 		Com_Printf ("%3i:%s\n", msg->readcount-1, s);
+	}
+}
+
+static qboolean CL_IsLegacyDemoMessage( void ) {
+	return clc.demoplaying && clc.demoLegacyFormat;
+}
+
+static int CL_LegacyDemoProtocol( void ) {
+	return clc.demoLegacyProtocol ? clc.demoLegacyProtocol : 43;
+}
+
+static void CL_AlignLegacyDemoMessage( msg_t *msg ) {
+	if ( ( msg->bit & 7 ) == 0 ) {
+		return;
+	}
+
+	msg->bit = ( msg->bit + 7 ) & ~7;
+	msg->readcount = msg->bit >> 3;
+}
+
+enum {
+	LEGACY_DM3_MAX_CLIENTS = 128,
+	LEGACY_DM3_ET_EVENTS = 12,
+	LEGACY_CS_GAME_VERSION = 12,
+	LEGACY_CS_LEVEL_START_TIME = 13,
+	LEGACY_CS_INTERMISSION = 14,
+	LEGACY_CS_FLAGSTATUS = 15,
+	LEGACY_PERS_SCORE = 0,
+	LEGACY_PERS_HITS = 1,
+	LEGACY_PERS_RANK = 2,
+	LEGACY_PERS_TEAM = 3,
+	LEGACY_PERS_SPAWN_COUNT = 4,
+	LEGACY_PERS_REWARD_COUNT = 5,
+	LEGACY_PERS_REWARD = 6,
+	LEGACY_PERS_ATTACKER = 7,
+	LEGACY_PERS_KILLED = 8,
+	LEGACY_PERS_IMPRESSIVE_COUNT = 9,
+	LEGACY_PERS_EXCELLENT_COUNT = 10,
+	LEGACY_PERS_GAUNTLET_FRAG_COUNT = 11,
+	LEGACY_REWARD_DENIED = 3
+};
+
+static int CL_TranslateLegacyConfigstringIndex( int index ) {
+	const int legacyLocationBase = CS_PLAYERS + LEGACY_DM3_MAX_CLIENTS;
+
+	if ( !CL_IsLegacyDemoMessage() || CL_LegacyDemoProtocol() >= 46 ) {
+		return index;
+	}
+
+	switch ( index ) {
+		case LEGACY_CS_GAME_VERSION:
+			return CS_GAME_VERSION;
+		case LEGACY_CS_LEVEL_START_TIME:
+			return CS_LEVEL_START_TIME;
+		case LEGACY_CS_INTERMISSION:
+			return CS_INTERMISSION;
+		case LEGACY_CS_FLAGSTATUS:
+			return CS_FLAGSTATUS;
+		default:
+			break;
+	}
+
+	if ( index >= CS_PLAYERS + MAX_CLIENTS && index < legacyLocationBase ) {
+		// DM3 demos reserve 128 player configstring slots; the baseq3 VM only has room for 64.
+		return -1;
+	}
+
+	if ( index >= legacyLocationBase && index < legacyLocationBase + MAX_LOCATIONS ) {
+		return CS_LOCATIONS + ( index - legacyLocationBase );
+	}
+
+	return index;
+}
+
+static int CL_TranslateLegacyEventNumber43( int event ) {
+	static const int legacyEventMap43[] = {
+		EV_NONE,
+		EV_FOOTSTEP,
+		EV_FOOTSTEP_METAL,
+		EV_FOOTSPLASH,
+		EV_FOOTWADE,
+		EV_SWIM,
+		EV_STEP_4,
+		EV_STEP_8,
+		EV_STEP_12,
+		EV_STEP_16,
+		EV_FALL_SHORT,
+		EV_FALL_MEDIUM,
+		EV_FALL_FAR,
+		EV_JUMP_PAD,
+		EV_JUMP,
+		EV_WATER_TOUCH,
+		EV_WATER_LEAVE,
+		EV_WATER_UNDER,
+		EV_WATER_CLEAR,
+		EV_ITEM_PICKUP,
+		EV_GLOBAL_ITEM_PICKUP,
+		EV_NOAMMO,
+		EV_CHANGE_WEAPON,
+		EV_FIRE_WEAPON,
+		EV_USE_ITEM0,
+		EV_USE_ITEM1,
+		EV_USE_ITEM2,
+		EV_USE_ITEM3,
+		EV_USE_ITEM4,
+		EV_USE_ITEM5,
+		EV_USE_ITEM6,
+		EV_USE_ITEM7,
+		EV_USE_ITEM8,
+		EV_USE_ITEM9,
+		EV_USE_ITEM10,
+		EV_USE_ITEM11,
+		EV_USE_ITEM12,
+		EV_USE_ITEM13,
+		EV_USE_ITEM14,
+		EV_USE_ITEM15,
+		EV_ITEM_RESPAWN,
+		EV_ITEM_POP,
+		EV_PLAYER_TELEPORT_IN,
+		EV_PLAYER_TELEPORT_OUT,
+		EV_GRENADE_BOUNCE,
+		EV_GENERAL_SOUND,
+		EV_GLOBAL_SOUND,
+		EV_BULLET_HIT_FLESH,
+		EV_BULLET_HIT_WALL,
+		EV_MISSILE_HIT,
+		EV_MISSILE_MISS,
+		EV_RAILTRAIL,
+		EV_SHOTGUN,
+		EV_BULLET,
+		EV_PAIN,
+		EV_DEATH1,
+		EV_DEATH2,
+		EV_DEATH3,
+		EV_OBITUARY,
+		EV_POWERUP_QUAD,
+		EV_POWERUP_BATTLESUIT,
+		EV_POWERUP_REGEN,
+		EV_GIB_PLAYER,
+		EV_DEBUG_LINE,
+		EV_TAUNT
+	};
+
+	if ( event < 0 || event >= ARRAY_LEN( legacyEventMap43 ) ) {
+		return event;
+	}
+
+	return legacyEventMap43[event];
+}
+
+static int CL_TranslateLegacyEvent( int event ) {
+	const int eventBits = event & EV_EVENT_BITS;
+	int eventNum = event & ~EV_EVENT_BITS;
+
+	if ( CL_LegacyDemoProtocol() < 46 ) {
+		eventNum = CL_TranslateLegacyEventNumber43( eventNum );
+	}
+
+	return eventBits | eventNum;
+}
+
+static void CL_CanonicalizeLegacyEntityState( entityState_t *state ) {
+	if ( !CL_IsLegacyDemoMessage() || CL_LegacyDemoProtocol() >= 46 ) {
+		return;
+	}
+
+	state->event = CL_TranslateLegacyEvent( state->event );
+
+	/*
+	Protocol 43 event entities are encoded relative to the pre-ET_TEAM
+	entity enum, so every freestanding event type sits one slot lower than
+	the modern baseq3 VM expects.
+	*/
+	if ( state->eType >= LEGACY_DM3_ET_EVENTS ) {
+		const int eventNum = CL_TranslateLegacyEventNumber43( state->eType - LEGACY_DM3_ET_EVENTS );
+		state->eType = ET_EVENTS + eventNum;
+	}
+}
+
+static void CL_CanonicalizeLegacyPlayerstate( const playerState_t *raw, const playerState_t *oldRaw, const playerState_t *oldCanonical, playerState_t *canonical ) {
+	int i;
+
+	*canonical = *raw;
+
+	if ( !CL_IsLegacyDemoMessage() || CL_LegacyDemoProtocol() >= 46 ) {
+		return;
+	}
+
+	canonical->externalEvent = CL_TranslateLegacyEvent( canonical->externalEvent );
+	for ( i = 0; i < MAX_PS_EVENTS; i++ ) {
+		canonical->events[i] = CL_TranslateLegacyEvent( canonical->events[i] );
+	}
+
+	Com_Memset( canonical->persistant, 0, sizeof( canonical->persistant ) );
+	canonical->persistant[PERS_SCORE] = raw->persistant[LEGACY_PERS_SCORE];
+	canonical->persistant[PERS_HITS] = raw->persistant[LEGACY_PERS_HITS];
+	canonical->persistant[PERS_RANK] = raw->persistant[LEGACY_PERS_RANK];
+	canonical->persistant[PERS_TEAM] = raw->persistant[LEGACY_PERS_TEAM];
+	canonical->persistant[PERS_SPAWN_COUNT] = raw->persistant[LEGACY_PERS_SPAWN_COUNT];
+	canonical->persistant[PERS_ATTACKER] = raw->persistant[LEGACY_PERS_ATTACKER];
+	canonical->persistant[PERS_KILLED] = raw->persistant[LEGACY_PERS_KILLED];
+	canonical->persistant[PERS_IMPRESSIVE_COUNT] = raw->persistant[LEGACY_PERS_IMPRESSIVE_COUNT];
+	canonical->persistant[PERS_EXCELLENT_COUNT] = raw->persistant[LEGACY_PERS_EXCELLENT_COUNT];
+	canonical->persistant[PERS_GAUNTLET_FRAG_COUNT] = raw->persistant[LEGACY_PERS_GAUNTLET_FRAG_COUNT];
+
+	if ( oldCanonical ) {
+		canonical->persistant[PERS_PLAYEREVENTS] = oldCanonical->persistant[PERS_PLAYEREVENTS];
+	}
+
+	if ( oldRaw && raw->persistant[LEGACY_PERS_REWARD_COUNT] != oldRaw->persistant[LEGACY_PERS_REWARD_COUNT] &&
+		raw->persistant[LEGACY_PERS_REWARD] == LEGACY_REWARD_DENIED ) {
+		canonical->persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_DENIEDREWARD;
+	}
+}
+
+static qboolean CL_AppendTranslatedToken( char *rewritten, int rewrittenSize, const char *token ) {
+	size_t currentLen;
+	size_t tokenLen;
+
+	currentLen = strlen( rewritten );
+	tokenLen = strlen( token );
+	if ( currentLen + ( currentLen ? 1 : 0 ) + tokenLen + 1 > (size_t)rewrittenSize ) {
+		return qfalse;
+	}
+
+	if ( currentLen ) {
+		rewritten[currentLen++] = ' ';
+		rewritten[currentLen] = '\0';
+	}
+
+	Com_Memcpy( rewritten + currentLen, token, tokenLen + 1 );
+	return qtrue;
+}
+
+static qboolean CL_TranslateLegacyScoresCommand( const char *command, char *rewritten, int rewrittenSize ) {
+	static const char *legacyScorePadding[] = { "0", "0", "0", "0", "0", "0", "0", "0" };
+	int argc;
+	int i;
+	int numScores;
+
+	// Protocol 43 demos send only the original six score columns per player.
+	Cmd_TokenizeString( command );
+	argc = Cmd_Argc();
+	if ( argc < 4 || Q_stricmp( Cmd_Argv( 0 ), "scores" ) ) {
+		Q_strncpyz( rewritten, command, rewrittenSize );
+		return qtrue;
+	}
+
+	numScores = atoi( Cmd_Argv( 1 ) );
+	if ( numScores < 0 || argc != ( numScores * 6 + 4 ) ) {
+		Q_strncpyz( rewritten, command, rewrittenSize );
+		return qtrue;
+	}
+
+	rewritten[0] = '\0';
+	for ( i = 0; i < 4; i++ ) {
+		if ( !CL_AppendTranslatedToken( rewritten, rewrittenSize, Cmd_Argv( i ) ) ) {
+			Q_strncpyz( rewritten, command, rewrittenSize );
+			return qtrue;
+		}
+	}
+
+	for ( i = 0; i < numScores; i++ ) {
+		int scoreArg;
+		int padArg;
+
+		for ( scoreArg = 0; scoreArg < 6; scoreArg++ ) {
+			if ( !CL_AppendTranslatedToken( rewritten, rewrittenSize, Cmd_Argv( i * 6 + 4 + scoreArg ) ) ) {
+				Q_strncpyz( rewritten, command, rewrittenSize );
+				return qtrue;
+			}
+		}
+
+		for ( padArg = 0; padArg < ARRAY_LEN( legacyScorePadding ); padArg++ ) {
+			if ( !CL_AppendTranslatedToken( rewritten, rewrittenSize, legacyScorePadding[padArg] ) ) {
+				Q_strncpyz( rewritten, command, rewrittenSize );
+				return qtrue;
+			}
+		}
+	}
+
+	return qtrue;
+}
+
+static qboolean CL_TranslateLegacyConfigstringCommand( const char *command, char *rewritten, int rewrittenSize ) {
+	const char *numberStart;
+	char *numberEnd;
+	int mappedIndex;
+	long rawIndex;
+	size_t prefixLen;
+
+	if ( !CL_IsLegacyDemoMessage() || CL_LegacyDemoProtocol() >= 46 ) {
+		Q_strncpyz( rewritten, command, rewrittenSize );
+		return qtrue;
+	}
+
+	if ( !strncmp( command, "cs ", 3 ) ) {
+		prefixLen = 3;
+	} else if ( !strncmp( command, "bcs0 ", 5 ) ) {
+		prefixLen = 5;
+	} else if ( !strncmp( command, "scores ", 7 ) ) {
+		return CL_TranslateLegacyScoresCommand( command, rewritten, rewrittenSize );
+	} else {
+		Q_strncpyz( rewritten, command, rewrittenSize );
+		return qtrue;
+	}
+
+	numberStart = command + prefixLen;
+	rawIndex = strtol( numberStart, &numberEnd, 10 );
+	if ( numberEnd == numberStart || ( *numberEnd != '\0' && *numberEnd != ' ' ) ) {
+		Q_strncpyz( rewritten, command, rewrittenSize );
+		return qtrue;
+	}
+
+	mappedIndex = CL_TranslateLegacyConfigstringIndex( (int)rawIndex );
+	if ( mappedIndex < 0 ) {
+		rewritten[0] = '\0';
+		return qfalse;
+	}
+
+	Com_sprintf( rewritten, rewrittenSize, "%.*s%d%s", (int)prefixLen, command, mappedIndex, numberEnd );
+	return qtrue;
+}
+
+static void CL_ReadDeltaEntity( msg_t *msg, const entityState_t *from, entityState_t *to, int number ) {
+	if ( CL_IsLegacyDemoMessage() ) {
+		MSG_ReadDeltaEntityLegacy( msg, from, to, number, CL_LegacyDemoProtocol() );
+		CL_CanonicalizeLegacyEntityState( to );
+	} else {
+		MSG_ReadDeltaEntity( msg, from, to, number );
+	}
+}
+
+static void CL_ReadDeltaPlayerstate( msg_t *msg, const playerState_t *from, playerState_t *to ) {
+	if ( CL_IsLegacyDemoMessage() ) {
+		MSG_ReadDeltaPlayerstateLegacy( msg, from, to, CL_LegacyDemoProtocol() );
+	} else {
+		MSG_ReadDeltaPlayerstate( msg, from, to );
 	}
 }
 
@@ -70,7 +423,7 @@ static void CL_DeltaEntity( msg_t *msg, clSnapshot_t *frame, int newnum, const e
 	if ( unchanged ) {
 		*state = *old;
 	} else {
-		MSG_ReadDeltaEntity( msg, old, state, newnum );
+		CL_ReadDeltaEntity( msg, old, state, newnum );
 	}
 
 	if ( state->number == (MAX_GENTITIES-1) ) {
@@ -205,10 +558,6 @@ static void CL_ParseSnapshot( msg_t *msg ) {
 	int			oldMessageNum;
 	int			i, n, packetNum;
 
-	// get the reliable sequence acknowledge number
-	// NOTE: now sent with all server to client messages
-	//clc.reliableAcknowledge = MSG_ReadLong( msg );
-
 	// read in the new snapshot to a temporary buffer
 	// we will only copy to cl.snap if it is valid
 	Com_Memset (&newSnap, 0, sizeof(newSnap));
@@ -216,6 +565,10 @@ static void CL_ParseSnapshot( msg_t *msg ) {
 	// we will have read any new server commands in this
 	// message before we got to svc_snapshot
 	newSnap.serverCommandNum = clc.serverCommandSequence;
+
+	if ( CL_IsLegacyDemoMessage() && CL_LegacyDemoProtocol() < 46 ) {
+		newSnap.cmdNum = MSG_ReadLong( msg );
+	}
 
 	newSnap.serverTime = MSG_ReadLong( msg );
 
@@ -270,10 +623,21 @@ static void CL_ParseSnapshot( msg_t *msg ) {
 
 	// read playerinfo
 	SHOWNET( msg, "playerstate" );
-	if ( old ) {
-		MSG_ReadDeltaPlayerstate( msg, &old->ps, &newSnap.ps );
+	if ( CL_IsLegacyDemoMessage() ) {
+		if ( old ) {
+			CL_ReadDeltaPlayerstate( msg, &old->psRaw, &newSnap.psRaw );
+			CL_CanonicalizeLegacyPlayerstate( &newSnap.psRaw, &old->psRaw, &old->ps, &newSnap.ps );
+		} else {
+			CL_ReadDeltaPlayerstate( msg, NULL, &newSnap.psRaw );
+			CL_CanonicalizeLegacyPlayerstate( &newSnap.psRaw, NULL, NULL, &newSnap.ps );
+		}
 	} else {
-		MSG_ReadDeltaPlayerstate( msg, NULL, &newSnap.ps );
+		if ( old ) {
+			CL_ReadDeltaPlayerstate( msg, &old->ps, &newSnap.ps );
+		} else {
+			CL_ReadDeltaPlayerstate( msg, NULL, &newSnap.ps );
+		}
+		newSnap.psRaw = newSnap.ps;
 	}
 
 	// read packet entities
@@ -536,20 +900,29 @@ static void CL_ParseGamestate( msg_t *msg ) {
 	while ( 1 ) {
 		cmd = MSG_ReadByte( msg );
 
+		if ( CL_IsLegacyDemoMessage() && cmd == svc_bad ) {
+			break;
+		}
+
 		if ( cmd == svc_EOF ) {
 			break;
 		}
 
 		if ( cmd == svc_configstring ) {
 			int		len;
+			int		rawIndex;
 
-			i = MSG_ReadShort( msg );
-			if ( i < 0 || i >= MAX_CONFIGSTRINGS ) {
+			rawIndex = MSG_ReadShort( msg );
+			if ( rawIndex < 0 || rawIndex >= MAX_CONFIGSTRINGS ) {
 				Com_Error( ERR_DROP, "%s: configstring > MAX_CONFIGSTRINGS", __func__ );
 			}
 
 			s = MSG_ReadBigString( msg );
 			len = strlen( s );
+			i = CL_TranslateLegacyConfigstringIndex( rawIndex );
+			if ( i < 0 ) {
+				continue;
+			}
 
 			if ( len + 1 + cl.gameState.dataCount > MAX_GAMESTATE_CHARS ) {
 				Com_Error( ERR_DROP, "%s: MAX_GAMESTATE_CHARS exceeded: %i", __func__,
@@ -560,6 +933,13 @@ static void CL_ParseGamestate( msg_t *msg ) {
 			cl.gameState.stringOffsets[ i ] = cl.gameState.dataCount;
 			Com_Memcpy( cl.gameState.stringData + cl.gameState.dataCount, s, len + 1 );
 			cl.gameState.dataCount += len + 1;
+
+			if ( CL_IsLegacyDemoMessage() && rawIndex == CS_SERVERINFO ) {
+				const int protocol = atoi( Info_ValueForKey( s, "protocol" ) );
+				if ( protocol >= 43 && protocol <= 48 ) {
+					clc.demoLegacyProtocol = protocol;
+				}
+			}
 		} else if ( cmd == svc_baseline ) {
 			newnum = MSG_ReadEntitynum( msg );
 
@@ -572,7 +952,7 @@ static void CL_ParseGamestate( msg_t *msg ) {
 			}
 
 			es = &cl.entityBaselines[ newnum ];
-			MSG_ReadDeltaEntity( msg, &nullstate, es, newnum );
+			CL_ReadDeltaEntity( msg, &nullstate, es, newnum );
 			cl.baselineUsed[ newnum ] = 1;
 		} else {
 			Com_Error( ERR_DROP, "%s: bad command byte", __func__ );
@@ -581,9 +961,11 @@ static void CL_ParseGamestate( msg_t *msg ) {
 
 	clc.eventMask |= EM_GAMESTATE;
 
-	clc.clientNum = MSG_ReadLong(msg);
-	// read the checksum feed
-	clc.checksumFeed = MSG_ReadLong( msg );
+	if ( !CL_IsLegacyDemoMessage() ) {
+		clc.clientNum = MSG_ReadLong(msg);
+		// read the checksum feed
+		clc.checksumFeed = MSG_ReadLong( msg );
+	}
 
 	// save old gamedir
 	Cvar_VariableStringBuffer( "fs_game", oldGame, sizeof( oldGame ) );
@@ -787,9 +1169,17 @@ static void CL_ParseCommandString( msg_t *msg ) {
 	const char *s;
 	int		seq;
 	int		index;
+	char	translated[MAX_STRING_CHARS];
+	qboolean	keepCommand;
+	const char *storedCommand;
 
 	seq = MSG_ReadLong( msg );
 	s = MSG_ReadString( msg );
+	storedCommand = s;
+	keepCommand = CL_TranslateLegacyConfigstringCommand( s, translated, sizeof( translated ) );
+	if ( keepCommand ) {
+		storedCommand = translated;
+	}
 
 	if ( cl_shownet->integer >= 3 )
 		Com_Printf( " %3i(%3i) %s\n", seq, clc.serverCommandSequence, s );
@@ -801,8 +1191,13 @@ static void CL_ParseCommandString( msg_t *msg ) {
 	clc.serverCommandSequence = seq;
 
 	index = seq & (MAX_RELIABLE_COMMANDS-1);
-	Q_strncpyz( clc.serverCommands[ index ], s, sizeof( clc.serverCommands[ index ] ) );
-	clc.serverCommandsIgnore[ index ] = qfalse;
+	if ( keepCommand ) {
+		Q_strncpyz( clc.serverCommands[ index ], storedCommand, sizeof( clc.serverCommands[ index ] ) );
+		clc.serverCommandsIgnore[ index ] = qfalse;
+	} else {
+		clc.serverCommands[ index ][0] = '\0';
+		clc.serverCommandsIgnore[ index ] = qtrue;
+	}
 
 #ifdef USE_CURL
 	if ( !clc.cURLUsed )
@@ -811,7 +1206,7 @@ static void CL_ParseCommandString( msg_t *msg ) {
 	// or in "awaiting snapshot..." state so handle "disconnect" here
 	if ( ( !cgvm && cls.state == CA_CONNECTED && clc.download != FS_INVALID_HANDLE ) || ( cgvm && cls.state == CA_PRIMED ) ) {
 		const char *text;
-		Cmd_TokenizeString( s );
+		Cmd_TokenizeString( storedCommand );
 		if ( !Q_stricmp( Cmd_Argv(0), "disconnect" ) ) {
 			text = ( Cmd_Argc() > 1 ) ? va( "Server disconnected: %s", Cmd_Argv( 1 ) ) : "Server disconnected.";
 			Cvar_Set( "com_errorMessage", text );
@@ -842,28 +1237,26 @@ void CL_ParseServerMessage( msg_t *msg ) {
 	}
 
 	clc.eventMask = 0;
-	MSG_Bitstream( msg );
+	if ( CL_IsLegacyDemoMessage() ) {
+		MSG_RawBitstream( msg );
+	} else {
+		MSG_Bitstream( msg );
+	}
 
-	// get the reliable sequence acknowledge number
-	clc.reliableAcknowledge = MSG_ReadLong( msg );
-
-	if ( clc.reliableSequence - clc.reliableAcknowledge > MAX_RELIABLE_COMMANDS ) {
-		if ( !clc.demoplaying ) {
-			Com_Printf( S_COLOR_YELLOW "WARNING: dropping %i commands from server\n", clc.reliableSequence - clc.reliableAcknowledge );
-		}
-		clc.reliableAcknowledge = clc.reliableSequence;
-	} else if ( clc.reliableSequence - clc.reliableAcknowledge < 0 ) {
-		if ( clc.demoplaying ) {
-			clc.reliableSequence = clc.reliableAcknowledge;
-		} else {
-			Com_Error( ERR_DROP, "%s: incorrect reliable sequence acknowledge number", __func__ );
-		}
+	if ( !CL_IsLegacyDemoMessage() || CL_LegacyDemoProtocol() >= 46 ) {
+		clc.reliableAcknowledge = MSG_ReadLong( msg );
+		CL_ValidateReliableAcknowledge();
 	}
 
 	// parse the message
 	while ( 1 ) {
 		if ( msg->readcount > msg->cursize ) {
 			Com_Error( ERR_DROP,"%s: read past end of server message", __func__ );
+			break;
+		}
+
+		if ( CL_IsLegacyDemoMessage() && msg->readcount == msg->cursize ) {
+			SHOWNET( msg, "END OF MESSAGE" );
 			break;
 		}
 
@@ -919,6 +1312,10 @@ void CL_ParseServerMessage( msg_t *msg ) {
 #else
 			return;
 #endif
+		}
+
+		if ( CL_IsLegacyDemoMessage() ) {
+			CL_AlignLegacyDemoMessage( msg );
 		}
 	}
 }

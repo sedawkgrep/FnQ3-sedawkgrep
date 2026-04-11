@@ -476,7 +476,9 @@ void RE_RenderScene( const refdef_t *fd ) {
 	}
 
 	RE_BeginScene(fd);
-	R_ApplyViewportFovCorrection( tr.refdef.width, tr.refdef.height, qtrue, &tr.refdef.fov_x, &tr.refdef.fov_y );
+	if ( ( fd->rdflags & RDF_NOFOVCORRECTION ) == 0 ) {
+		R_ApplyViewportFovCorrection( tr.refdef.width, tr.refdef.height, qtrue, &tr.refdef.fov_x, &tr.refdef.fov_y );
+	}
 
 	// SmileTheory: playing with shadow mapping
 	if (!( fd->rdflags & RDF_NOWORLDMODEL ) && tr.refdef.num_dlights && r_dlightMode->integer >= 2)

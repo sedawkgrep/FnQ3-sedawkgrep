@@ -56,6 +56,7 @@ typedef struct {
 
 	int				cmdNum;			// the next cmdNum the server is expecting
 	playerState_t	ps;						// complete information about the current player at this time
+	playerState_t	psRaw;					// raw protocol-specific playerstate for legacy demo delta bases
 
 	int				numEntities;			// all of the entities that need to be presented
 	int				parseEntitiesNum;		// at the time of this snapshot
@@ -225,6 +226,8 @@ typedef struct {
 	qboolean	spDemoRecording;
 	qboolean	demorecording;
 	qboolean	demoplaying;
+	qboolean	demoLegacyFormat;
+	int			demoLegacyProtocol;
 	qboolean	demowaiting;	// don't record until a non-delta message is received
 	qboolean	firstDemoFrameSkipped;
 	fileHandle_t	demofile;
@@ -601,6 +604,7 @@ void CL_HudResetCGame( void );
 void CL_HudBeginFrame( void );
 void CL_HudEndFrame( void );
 void CL_HudRegisterShaderName( qhandle_t shader, const char *name );
+void CL_HudAdjustRefdef( refdef_t *refdef );
 void CL_HudDrawStretchPic( float x, float y, float w, float h, float s1, float t1, float s2, float t2, qhandle_t shader );
 
 //

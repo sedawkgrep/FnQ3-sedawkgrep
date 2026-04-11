@@ -62,6 +62,7 @@ typedef struct {
 	qboolean	allowoverflow;	// if false, do a Com_Error
 	qboolean	overflowed;		// set to true if the buffer size failed (with allowoverflow set)
 	qboolean	oob;			// raw out-of-band operation, no static huffman encoding/decoding
+	qboolean	rawbit;			// raw bitstream operation, no static huffman but keeps bit packing
 	byte	*data;
 	int		maxsize;
 	int		maxbits;			// maxsize in bits, for overflow checks
@@ -75,6 +76,7 @@ void MSG_InitOOB( msg_t *buf, byte *data, int length );
 void MSG_Clear( msg_t *buf );
 void MSG_WriteData( msg_t *buf, const void *data, int length );
 void MSG_Bitstream( msg_t *buf );
+void MSG_RawBitstream( msg_t *buf );
 
 // TTimo
 // copy a msg_t in case we need to store it as is for a bit
@@ -118,9 +120,11 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, const usercmd_t *from, usercm
 
 void MSG_WriteDeltaEntity( msg_t *msg, const entityState_t *from, const entityState_t *to, qboolean force );
 void MSG_ReadDeltaEntity( msg_t *msg, const entityState_t *from, entityState_t *to, int number );
+void MSG_ReadDeltaEntityLegacy( msg_t *msg, const entityState_t *from, entityState_t *to, int number, int protocol );
 
 void MSG_WriteDeltaPlayerstate( msg_t *msg, const playerState_t *from, const playerState_t *to );
 void MSG_ReadDeltaPlayerstate( msg_t *msg, const playerState_t *from, playerState_t *to );
+void MSG_ReadDeltaPlayerstateLegacy( msg_t *msg, const playerState_t *from, playerState_t *to, int protocol );
 
 void MSG_ReportChangeVectors_f( void );
 

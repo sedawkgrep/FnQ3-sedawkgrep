@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cmodel.c -- model loading
 
 #include "cm_local.h"
+#include "bsp_v43.h"
 
 #ifdef BSPC
 
@@ -539,6 +540,14 @@ static void CMod_LoadPatches( const lump_t *surfs, const lump_t *verts ) {
 		}
 		// FIXME: check for non-colliding patches
 
+		Com_Printf( "CM_LoadPatches: surface %d shader %d size %dx%d firstVert %d numVerts %d\n",
+			i,
+			LittleLong( in->shaderNum ),
+			LittleLong( in->patchWidth ),
+			LittleLong( in->patchHeight ),
+			LittleLong( in->firstVert ),
+			LittleLong( in->numVerts ) );
+
 		cm.surfaces[ i ] = patch = Hunk_Alloc( sizeof( *patch ), h_high );
 
 		// load the full drawverts onto the stack
@@ -593,6 +602,14 @@ static uint32_t CM_Checksum( const dheader_t *header ) {
 }
 #endif
 
+static void *CM_BSP43Alloc( int size ) {
+	return Z_Malloc( size );
+}
+
+static void CM_BSP43Free( void *ptr ) {
+	Z_Free( ptr );
+}
+
 
 /*
 ==================
@@ -606,6 +623,7 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	int				i;
 	dheader_t		header;
 	int				length;
+	bsp43_translation_t translated = { 0 };
 
 	if ( !name || !name[0] ) {
 		Com_Error( ERR_DROP, "%s: NULL name", __func__ );
@@ -653,6 +671,21 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	if ( !buf ) {
 		Com_Error( ERR_DROP, "%s: couldn't load %s", __func__, name );
 	}
+	if ( length >= (int)sizeof( dheader43_t ) ) {
+		const dheader43_t *rawHeader = (const dheader43_t *)buf;
+
+		if ( LittleLong( rawHeader->ident ) == BSP_IDENT && LittleLong( rawHeader->version ) == BSP_VERSION_IHV ) {
+			char translateError[128];
+
+			if ( !BSP43_TranslateToV46( buf, length, CM_BSP43Alloc, CM_BSP43Free, &translated, translateError, sizeof( translateError ) ) ) {
+				Com_Error( ERR_DROP, "%s: %s could not translate IBSP v43: %s", __func__, name, translateError );
+			}
+
+			FS_FreeFile( buf );
+			buf = translated.data;
+			length = translated.length;
+		}
+	}
 	if ( length < sizeof( dheader_t ) ) {
 		Com_Error( ERR_DROP, "%s: %s has truncated header", __func__, name );
 	}
@@ -694,8 +727,12 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 
 	CMod_CheckLeafBrushes();
 
-	// we are NOT freeing the file, because it is cached for the ref
-	FS_FreeFile( buf );
+	if ( translated.data ) {
+		Z_Free( translated.data );
+	} else {
+		// we are NOT freeing the file, because it is cached for the ref
+		FS_FreeFile( buf );
+	}
 
 	CM_InitBoxHull();
 

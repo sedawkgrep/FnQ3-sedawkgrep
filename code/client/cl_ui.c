@@ -790,6 +790,34 @@ static void CL_UIAdjustRefdef( refdef_t *refdef ) {
 }
 
 
+static void CL_UIRenderScene( const refdef_t *refdef ) {
+	cvar_t *rFovCorrection;
+	int savedInteger;
+	float savedValue;
+	qboolean savedModified;
+
+	if ( !refdef || !Cvar_VariableIntegerValue( "r_fovCorrection" ) ) {
+		re.RenderScene( refdef );
+		return;
+	}
+
+	rFovCorrection = Cvar_Get( "r_fovCorrection", "0", 0 );
+	savedInteger = rFovCorrection->integer;
+	savedValue = rFovCorrection->value;
+	savedModified = rFovCorrection->modified;
+
+	rFovCorrection->integer = 0;
+	rFovCorrection->value = 0.0f;
+	rFovCorrection->modified = qfalse;
+
+	re.RenderScene( refdef );
+
+	rFovCorrection->integer = savedInteger;
+	rFovCorrection->value = savedValue;
+	rFovCorrection->modified = savedModified;
+}
+
+
 /*
 ====================
 VM_ArgPtr
@@ -959,8 +987,9 @@ static intptr_t CL_UISystemCalls( intptr_t *args ) {
 		refdef_t refdef;
 
 		Com_Memcpy( &refdef, VMA(1), sizeof( refdef ) );
+		refdef.rdflags |= RDF_NOFOVCORRECTION;
 		CL_UIAdjustRefdef( &refdef );
-		re.RenderScene( &refdef );
+		CL_UIRenderScene( &refdef );
 		return 0;
 	}
 

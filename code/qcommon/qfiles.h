@@ -306,6 +306,7 @@ typedef struct {
 #define BSP_IDENT	(('P'<<24)+('S'<<16)+('B'<<8)+'I')
 		// little-endian "IBSP"
 
+#define BSP_VERSION_IHV		43
 #define BSP_VERSION			46
 
 
@@ -383,6 +384,85 @@ typedef struct {
 
 	lump_t		lumps[HEADER_LUMPS];
 } dheader_t;
+
+/*
+=============================================================================
+
+IBSP v43
+
+The IHV / q3test branch uses an older 14-lump layout with Quake II style
+planes and models, direct brush contents / side flags, and draw surfaces that
+embed shader names instead of using a separate shader lump.
+
+=============================================================================
+*/
+
+#define	LUMP43_ENTITIES		0
+#define	LUMP43_PLANES		1
+#define	LUMP43_NODES		2
+#define	LUMP43_LEAFS		3
+#define	LUMP43_LEAFSURFACES	4
+#define	LUMP43_LEAFBRUSHES	5
+#define	LUMP43_MODELS		6
+#define	LUMP43_BRUSHES		7
+#define	LUMP43_BRUSHSIDES	8
+#define	LUMP43_LIGHTMAPS	9
+#define	LUMP43_VISIBILITY	10
+#define	LUMP43_DRAWVERTS	11
+#define	LUMP43_SURFACES		12
+#define	LUMP43_FOGS			13
+#define	HEADER_LUMPS_43		14
+
+typedef struct {
+	int			ident;
+	int			version;
+
+	lump_t		lumps[HEADER_LUMPS_43];
+} dheader43_t;
+
+typedef struct {
+	float		normal[3];
+	float		dist;
+	int			type;
+} dplane43_t;
+
+typedef struct {
+	float		mins[3], maxs[3];
+	float		origin[3];
+	int			headnode;
+	int			firstFace, numFaces;
+} dmodel43_t;
+
+typedef struct {
+	int			firstSide;
+	int			numSides;
+	int			contentFlags;
+} dbrush43_t;
+
+typedef struct {
+	int			planeNum;
+	int			surfaceFlags;
+} dbrushside43_t;
+
+typedef struct {
+	char		shader[MAX_QPATH];
+	int			brushNum;
+} dfog43_t;
+
+typedef struct {
+	char		shader[MAX_QPATH];
+	int			fogNum;
+	int			brushSideNum;
+	int			firstVert;
+	int			numVerts;
+	int			patchWidth;
+	int			patchHeight;
+	int			lightmapNum;
+	int			lightmapX, lightmapY;
+	int			lightmapWidth, lightmapHeight;
+	vec3_t		lightmapOrigin;
+	vec3_t		lightmapVecs[3];
+} dsurface43_t;
 
 typedef struct {
 	float		mins[3], maxs[3];

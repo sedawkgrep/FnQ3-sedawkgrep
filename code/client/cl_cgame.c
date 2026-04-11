@@ -1078,21 +1078,34 @@ static intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_ADDADDITIVELIGHTTOSCENE:
 		re.AddAdditiveLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
 		return 0;
-	case CG_R_RENDERSCENE:
-		if ( cl_captureActive && cl_captureActive->integer &&
-			r_levelshotHideViewWeapon && r_levelshotHideViewWeapon->integer ) {
-			refdef_t captureRefdef;
+	case CG_R_RENDERSCENE: {
+		const refdef_t *refdef = VMA(1);
+		refdef_t adjustedRefdef;
+		qboolean useAdjustedRefdef = qfalse;
 
-			captureRefdef = *(const refdef_t *)VMA(1);
-			captureRefdef.rdflags |= RDF_NOFIRSTPERSON;
-			CL_FlushEnemyHighlightRefEntities( &captureRefdef );
-			re.RenderScene( &captureRefdef );
-			return 0;
+		if ( refdef && ( refdef->rdflags & RDF_NOWORLDMODEL ) != 0 &&
+			( ( cl_hudAspect && cl_hudAspect->integer > 0 ) || ( cl_hudDump && cl_hudDump->integer > 0 ) ) ) {
+			adjustedRefdef = *refdef;
+			CL_HudAdjustRefdef( &adjustedRefdef );
+			refdef = &adjustedRefdef;
+			useAdjustedRefdef = qtrue;
 		}
 
-		CL_FlushEnemyHighlightRefEntities( VMA(1) );
-		re.RenderScene( VMA(1) );
+		if ( refdef && cl_captureActive && cl_captureActive->integer &&
+			r_levelshotHideViewWeapon && r_levelshotHideViewWeapon->integer ) {
+			if ( !useAdjustedRefdef ) {
+				adjustedRefdef = *refdef;
+				refdef = &adjustedRefdef;
+				useAdjustedRefdef = qtrue;
+			}
+
+			adjustedRefdef.rdflags |= RDF_NOFIRSTPERSON;
+		}
+
+		CL_FlushEnemyHighlightRefEntities( refdef );
+		re.RenderScene( refdef );
 		return 0;
+	}
 	case CG_R_SETCOLOR:
 		re.SetColor( VMA(1) );
 		return 0;

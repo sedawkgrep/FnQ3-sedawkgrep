@@ -102,6 +102,7 @@ static int hudDumpPrevValue;
 
 
 static qboolean CL_HudLoadRules( qboolean verbose );
+static const hudRule_t *CL_HudFindRule( const hudDrawCapture_t *draw );
 
 
 static const char *CL_HudAlignXName( hudAlignX_t align ) {
@@ -481,6 +482,43 @@ static void CL_HudApplyUniform( float *x, float *y, float *w, float *h, hudAlign
 	*y = *y * cls.scale + originY;
 	*w *= cls.scale;
 	*h *= cls.scale;
+}
+
+
+static void CL_HudTransformRect( const hudDrawCapture_t *draw, float *x, float *y, float *w, float *h ) {
+	hudTransformMode_t mode;
+	hudAlignX_t alignX;
+	hudAlignY_t alignY;
+
+	mode = CL_HudIsFullscreenLike( draw->x, draw->y, draw->w, draw->h ) ? HUD_TRANSFORM_STRETCH : HUD_TRANSFORM_UNIFORM;
+	alignX = HUD_ALIGN_CENTER;
+	alignY = HUD_ALIGN_MIDDLE;
+
+	if ( hudScriptLoaded && hudNumRules > 0 ) {
+		const hudRule_t *rule;
+
+		rule = CL_HudFindRule( draw );
+		if ( rule ) {
+			mode = rule->mode;
+			if ( rule->hasAlignX ) {
+				alignX = rule->alignX;
+			}
+			if ( rule->hasAlignY ) {
+				alignY = rule->alignY;
+			}
+		}
+	}
+
+	*x = draw->x;
+	*y = draw->y;
+	*w = draw->w;
+	*h = draw->h;
+
+	if ( mode == HUD_TRANSFORM_STRETCH ) {
+		CL_HudApplyStretch( x, y, w, h );
+	} else {
+		CL_HudApplyUniform( x, y, w, h, alignX, alignY );
+	}
 }
 
 
@@ -887,11 +925,43 @@ void CL_HudRegisterShaderName( qhandle_t shader, const char *name ) {
 }
 
 
+void CL_HudAdjustRefdef( refdef_t *refdef ) {
+	hudDrawCapture_t draw;
+	float x;
+	float y;
+	float w;
+	float h;
+
+	if ( !refdef || ( refdef->rdflags & RDF_NOWORLDMODEL ) == 0 ) {
+		return;
+	}
+
+	CL_HudUnstretch( (float)refdef->x, (float)refdef->y, (float)refdef->width, (float)refdef->height,
+		&draw.x, &draw.y, &draw.w, &draw.h );
+	draw.s1 = 0.0f;
+	draw.t1 = 0.0f;
+	draw.s2 = 0.0f;
+	draw.t2 = 0.0f;
+	draw.shader = 0;
+	draw.shaderName[ 0 ] = '\0';
+	draw.textLike = qfalse;
+
+	CL_HudCaptureDraw( &draw );
+
+	if ( !cl_hudAspect || cl_hudAspect->integer <= 0 ) {
+		return;
+	}
+
+	CL_HudTransformRect( &draw, &x, &y, &w, &h );
+	refdef->x = (int)( x + 0.5f );
+	refdef->y = (int)( y + 0.5f );
+	refdef->width = (int)( w + 0.5f );
+	refdef->height = (int)( h + 0.5f );
+}
+
+
 void CL_HudDrawStretchPic( float x, float y, float w, float h, float s1, float t1, float s2, float t2, qhandle_t shader ) {
 	hudDrawCapture_t draw;
-	hudTransformMode_t mode;
-	hudAlignX_t alignX;
-	hudAlignY_t alignY;
 	float pixelX;
 	float pixelY;
 	float pixelW;
@@ -922,38 +992,6 @@ void CL_HudDrawStretchPic( float x, float y, float w, float h, float s1, float t
 		return;
 	}
 
-	mode = CL_HudIsFullscreenLike( draw.x, draw.y, draw.w, draw.h ) ? HUD_TRANSFORM_STRETCH : HUD_TRANSFORM_UNIFORM;
-	alignX = HUD_ALIGN_CENTER;
-	alignY = HUD_ALIGN_MIDDLE;
-
-	if ( hudScriptLoaded && hudNumRules > 0 ) {
-		const hudRule_t *rule;
-
-		rule = CL_HudFindRule( &draw );
-		if ( rule ) {
-			mode = rule->mode;
-			if ( rule->hasAlignX ) {
-				alignX = rule->alignX;
-			}
-			if ( rule->hasAlignY ) {
-				alignY = rule->alignY;
-			}
-		}
-	}
-
-	if ( mode == HUD_TRANSFORM_STRETCH ) {
-		x = draw.x;
-		y = draw.y;
-		w = draw.w;
-		h = draw.h;
-		CL_HudApplyStretch( &x, &y, &w, &h );
-	} else {
-		x = draw.x;
-		y = draw.y;
-		w = draw.w;
-		h = draw.h;
-		CL_HudApplyUniform( &x, &y, &w, &h, alignX, alignY );
-	}
-
+	CL_HudTransformRect( &draw, &x, &y, &w, &h );
 	re.DrawStretchPic( x, y, w, h, s1, t1, s2, t2, shader );
 }

@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // tr_map.c
 
 #include "tr_local.h"
+#include "../qcommon/bsp_v43.h"
 
 /*
 
@@ -2215,6 +2216,8 @@ void RE_LoadWorldMap( const char *name ) {
 	int			i;
 	int32_t		size;
 	dheader_t	*header;
+	bsp43_translation_t translated = { 0 };
+	qboolean	translatedMap = qfalse;
 	union {
 		byte *b;
 		void *v;
@@ -2242,6 +2245,22 @@ void RE_LoadWorldMap( const char *name ) {
 	}
 	if ( size < sizeof( dheader_t ) ) {
 		ri.Error( ERR_DROP, "%s: %s has truncated header", __func__, name );
+	}
+	if ( size >= (int)sizeof( dheader43_t ) ) {
+		const dheader43_t *rawHeader = (const dheader43_t *)buffer.b;
+
+		if ( LittleLong( rawHeader->ident ) == BSP_IDENT && LittleLong( rawHeader->version ) == BSP_VERSION_IHV ) {
+			char translateError[128];
+
+			if ( !BSP43_TranslateToV46( buffer.b, size, ri.Malloc, ri.Free, &translated, translateError, sizeof( translateError ) ) ) {
+				ri.Error( ERR_DROP, "%s: %s could not translate IBSP v43: %s", __func__, name, translateError );
+			}
+
+			ri.FS_FreeFile( buffer.v );
+			buffer.v = translated.data;
+			size = translated.length;
+			translatedMap = qtrue;
+		}
 	}
 
 	tr.mapLoading = qtrue;
@@ -2303,5 +2322,9 @@ void RE_LoadWorldMap( const char *name ) {
 	// only set tr.world now that we know the entire level has loaded properly
 	tr.world = &s_worldData;
 
-	ri.FS_FreeFile( buffer.v );
+	if ( translatedMap ) {
+		ri.Free( buffer.v );
+	} else {
+		ri.FS_FreeFile( buffer.v );
+	}
 }

@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // tr_map.c
 
 #include "tr_local.h"
+#include "../qcommon/bsp_v43.h"
 
 #define JSON_IMPLEMENTATION
 #include "../qcommon/json.h"
@@ -2708,7 +2709,10 @@ Called directly from cgame
 */
 void RE_LoadWorldMap( const char *name ) {
 	int			i;
+	int32_t		size;
 	dheader_t	*header;
+	bsp43_translation_t translated = { 0 };
+	qboolean	translatedMap = qfalse;
 	union {
 		byte *b;
 		void *v;
@@ -2745,9 +2749,25 @@ void RE_LoadWorldMap( const char *name ) {
 	tr.worldMapLoaded = qtrue;
 
 	// load it
-    ri.FS_ReadFile( name, &buffer.v );
+	size = ri.FS_ReadFile( name, &buffer.v );
 	if ( !buffer.b ) {
 		ri.Error (ERR_DROP, "RE_LoadWorldMap: %s not found", name);
+	}
+	if ( size >= (int)sizeof( dheader43_t ) ) {
+		const dheader43_t *rawHeader = (const dheader43_t *)buffer.b;
+
+		if ( LittleLong( rawHeader->ident ) == BSP_IDENT && LittleLong( rawHeader->version ) == BSP_VERSION_IHV ) {
+			char translateError[128];
+
+			if ( !BSP43_TranslateToV46( buffer.b, size, ri.Malloc, ri.Free, &translated, translateError, sizeof( translateError ) ) ) {
+				ri.Error( ERR_DROP, "%s: %s could not translate IBSP v43: %s", __func__, name, translateError );
+			}
+
+			ri.FS_FreeFile( buffer.v );
+			buffer.v = translated.data;
+			size = translated.length;
+			translatedMap = qtrue;
+		}
 	}
 
 	// clear tr.world so if the level fails to load, the next
@@ -3018,5 +3038,9 @@ void RE_LoadWorldMap( const char *name ) {
 		R_RenderMissingCubemaps();
 	}
 
-    ri.FS_FreeFile( buffer.v );
+	if ( translatedMap ) {
+		ri.Free( buffer.v );
+	} else {
+		ri.FS_FreeFile( buffer.v );
+	}
 }

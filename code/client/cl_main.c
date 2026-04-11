@@ -24,6 +24,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "client.h"
 #include <limits.h>
 
+#define LEGACY_DEMOEXT "dm3"
+
 cvar_t	*cl_noprint;
 cvar_t	*cl_debugMove;
 cvar_t	*cl_motd;
@@ -118,6 +120,88 @@ netadr_t			rcon_address;
 char				cl_oldGame[ MAX_QPATH ];
 qboolean			cl_oldGameSet;
 static	qboolean	noGameRestart = qfalse;
+
+/*
+====================
+CL_IsLegacyDemoExt
+====================
+*/
+static qboolean CL_IsLegacyDemoExt( const char *ext )
+{
+	return !Q_stricmp( ext, LEGACY_DEMOEXT );
+}
+
+/*
+====================
+CL_DetectLegacyDemoProtocol
+
+Pre-1.27 demos store an uncompressed gamestate in the first message. Scan that
+message for the literal `protocol\NN` key so the parser can pick the correct
+43/46/48-era field tables before playback starts.
+====================
+*/
+static int CL_DetectLegacyDemoProtocol( fileHandle_t handle )
+{
+	byte buffer[MAX_MSGLEN];
+	int currentPos;
+	int sequence;
+	int length;
+	int protocol;
+	int r;
+	int i;
+
+	currentPos = FS_FTell( handle );
+	if ( currentPos < 0 ) {
+		return 43;
+	}
+
+	if ( FS_Seek( handle, 0, FS_SEEK_SET ) < 0 ) {
+		return 43;
+	}
+
+	r = FS_Read( &sequence, 4, handle );
+	if ( r != 4 ) {
+		goto done;
+	}
+	(void)sequence;
+
+	r = FS_Read( &length, 4, handle );
+	if ( r != 4 ) {
+		goto done;
+	}
+
+	length = LittleLong( length );
+	if ( length <= 0 || length > (int)sizeof( buffer ) ) {
+		goto done;
+	}
+
+	r = FS_Read( buffer, length, handle );
+	if ( r != length ) {
+		goto done;
+	}
+
+	for ( i = 0; i + 10 < length; i++ ) {
+		const char *scan = (const char *)&buffer[i];
+
+		if ( Q_strncmp( scan, "protocol\\", 9 ) != 0 ) {
+			continue;
+		}
+
+		if ( scan[9] < '0' || scan[9] > '9' || scan[10] < '0' || scan[10] > '9' ) {
+			continue;
+		}
+
+		protocol = ( scan[9] - '0' ) * 10 + ( scan[10] - '0' );
+		if ( protocol >= 43 && protocol <= 48 ) {
+			FS_Seek( handle, currentPos, FS_SEEK_SET );
+			return protocol;
+		}
+	}
+
+done:
+	FS_Seek( handle, currentPos, FS_SEEK_SET );
+	return 43;
+}
 
 #ifdef USE_CURL
 download_t			download;
@@ -622,14 +706,18 @@ static void CL_Record_f( void ) {
 		ext = COM_GetExtension( demoName );
 		if ( *ext ) {
 			// strip demo extension
-			sprintf( demoExt, "%s%d", DEMOEXT, OLD_PROTOCOL_VERSION );
-			if ( Q_stricmp( ext, demoExt ) == 0 ) {
+			if ( CL_IsLegacyDemoExt( ext ) ) {
 				*(strrchr( demoName, '.' )) = '\0';
 			} else {
-				// check both protocols
-				sprintf( demoExt, "%s%d", DEMOEXT, NEW_PROTOCOL_VERSION );
+				sprintf( demoExt, "%s%d", DEMOEXT, OLD_PROTOCOL_VERSION );
 				if ( Q_stricmp( ext, demoExt ) == 0 ) {
 					*(strrchr( demoName, '.' )) = '\0';
+				} else {
+					// check both protocols
+					sprintf( demoExt, "%s%d", DEMOEXT, NEW_PROTOCOL_VERSION );
+					if ( Q_stricmp( ext, demoExt ) == 0 ) {
+						*(strrchr( demoName, '.' )) = '\0';
+					}
 				}
 			}
 		}
@@ -824,6 +912,19 @@ static int CL_WalkDemoExt( const char *arg, char *name, int name_len, fileHandle
 			Com_Printf( "Not found: %s\n", name );
 		i++;
 	}
+
+	Com_sprintf( name, name_len, "demos/%s." LEGACY_DEMOEXT, arg );
+	FS_BypassPure();
+	FS_FOpenFileRead( name, handle, qtrue );
+	FS_RestorePure();
+	if ( *handle != FS_INVALID_HANDLE )
+	{
+		Com_Printf( "Demo file: %s\n", name );
+		return OLD_PROTOCOL_VERSION;
+	}
+	else
+		Com_Printf( "Not found: %s\n", name );
+
 	return -1;
 }
 
@@ -835,9 +936,13 @@ CL_DemoExtCallback
 */
 static qboolean CL_DemoNameCallback_f( const char *filename, int length )
 {
+	const int legacy_ext_len = strlen( "." LEGACY_DEMOEXT );
 	const int ext_len = strlen( "." DEMOEXT );
 	const int num_len = 2;
 	int version;
+
+	if ( length >= legacy_ext_len && !Q_stricmp( filename + length - legacy_ext_len, "." LEGACY_DEMOEXT ) )
+		return qtrue;
 
 	if ( length <= ext_len + num_len || Q_stricmpn( filename + length - (ext_len + num_len), "." DEMOEXT, ext_len ) != 0 )
 		return qfalse;
@@ -863,7 +968,7 @@ static void CL_CompleteDemoName(const char *args, int argNum )
 	if ( argNum == 2 )
 	{
 		FS_SetFilenameCallback( CL_DemoNameCallback_f );
-		Field_CompleteFilename( "demos", "." DEMOEXT "??", qfalse, FS_MATCH_ANY | FS_MATCH_STICK | FS_MATCH_SUBDIRS );
+		Field_CompleteFilename( "demos", "", qfalse, FS_MATCH_ANY | FS_MATCH_STICK | FS_MATCH_SUBDIRS );
 		FS_SetFilenameCallback( NULL );
 	}
 }
@@ -907,9 +1012,17 @@ static void CL_PlayDemo_f( void ) {
 	// open the demo file
 	arg = Cmd_Argv( 1 );
 
-	// check for an extension .DEMOEXT_?? (?? is protocol)
+	// check for an explicit demo extension first
 	ext_test = strrchr(arg, '.');
-	if ( ext_test && !Q_stricmpn(ext_test + 1, DEMOEXT, ARRAY_LEN(DEMOEXT) - 1) )
+	if ( ext_test && CL_IsLegacyDemoExt( ext_test + 1 ) )
+	{
+		protocol = OLD_PROTOCOL_VERSION;
+		Com_sprintf( name, sizeof( name ), "demos/%s", arg );
+		FS_BypassPure();
+		FS_FOpenFileRead( name, &hFile, qtrue );
+		FS_RestorePure();
+	}
+	else if ( ext_test && !Q_stricmpn(ext_test + 1, DEMOEXT, ARRAY_LEN(DEMOEXT) - 1) )
 	{
 		protocol = atoi(ext_test + ARRAY_LEN(DEMOEXT));
 
@@ -972,6 +1085,8 @@ static void CL_PlayDemo_f( void ) {
 	else
 		shortname = name;
 
+	clc.demoLegacyFormat = CL_IsLegacyDemoExt( COM_GetExtension( name ) );
+	clc.demoLegacyProtocol = clc.demoLegacyFormat ? CL_DetectLegacyDemoProtocol( clc.demofile ) : 0;
 	Q_strncpyz( clc.demoName, shortname, sizeof( clc.demoName ) );
 
 	Con_Close();
@@ -1268,6 +1383,8 @@ qboolean CL_Disconnect( qboolean showMainMenu ) {
 		FS_FCloseFile( clc.demofile );
 		clc.demofile = FS_INVALID_HANDLE;
 	}
+	clc.demoLegacyFormat = qfalse;
+	clc.demoLegacyProtocol = 0;
 
 	// Finish downloads
 	if ( clc.download != FS_INVALID_HANDLE ) {

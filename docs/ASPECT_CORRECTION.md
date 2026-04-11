@@ -7,9 +7,9 @@ FnQuake3 keeps the classic Quake III `640x480` UI and HUD assumptions, then rema
 These settings are split by subsystem, so you can correct the HUD, menus, and cinematics independently instead of forcing one global choice.
 
 - `cl_hudAspect 0`: Stretch legacy HUD output to the framebuffer, matching the original wide-screen stretching behavior.
-- `cl_hudAspect 1`: Keep HUD output in centered 4:3 space. If `fnq3-hud.json` exists in the active game directory, matching rules are applied automatically.
+- `cl_hudAspect 1`: Keep HUD output in centered 4:3 space. If `fnq3-hud.json` exists in the active game directory, matching rules are applied automatically, including HUD 3D model viewports rendered through cgame.
 - `cl_menuAspect 0`: Stretch menu widgets to the framebuffer.
-- `cl_menuAspect 1`: Keep menu widgets in centered 4:3 space, including 3D model preview viewports rendered through the UI VM.
+- `cl_menuAspect 1`: Keep menu widgets in centered 4:3 space, including 3D model preview viewports rendered through the UI VM. Those adjusted UI scenes keep their authored menu FOV instead of taking an extra `r_fovCorrection` pass.
 - `cl_cinematicAspect 0`: Stretch UI and fullscreen cinematics to the framebuffer.
 - `cl_cinematicAspect 1`: Keep UI and fullscreen cinematics in centered 4:3 space.
 
@@ -20,6 +20,7 @@ When `cl_hudAspect 1` is enabled, FnQuake3 starts from a centered 4:3 HUD layout
 - The script is read from the active game filesystem location.
 - `hud_reload` reparses `fnq3-hud.json` without restarting the game.
 - Missing or invalid scripts fall back to centered uniform HUD placement.
+- HUD `refdef` viewports use the same rect transform path as HUD quads, so score heads and other 3D HUD widgets stay aligned with the corrected HUD layout.
 
 Supported rule fields:
 
@@ -58,6 +59,7 @@ Example:
 
 - Output is deduplicated across frames.
 - Nearby primitives are grouped into likely widgets, including text runs.
+- HUD 3D model viewports are included as region-based groups, so they can be targeted with the same rule file.
 - Each dumped group includes a suggested transform mode and alignment.
 - The dump format matches the loader format, so it works well as a starting point for a real `fnq3-hud.json`.
 
@@ -67,6 +69,7 @@ Example:
 
 - Traditional menu art is remapped into centered 4:3 space.
 - UI `refdef` viewports are remapped as well, so player models and other 3D menu widgets render into the corrected 4:3 viewport instead of a stretched one.
+- When that remap is active, the UI scene keeps its original menu-authored FOV and is not widened again by `r_fovCorrection`.
 - That keeps the 2D framing and 3D widget projection in the same coordinate space, so the whole menu feels consistent.
 
 ## Cinematics

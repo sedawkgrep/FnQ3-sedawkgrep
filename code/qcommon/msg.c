@@ -58,6 +58,13 @@ void MSG_Clear( msg_t *buf ) {
 
 void MSG_Bitstream( msg_t *buf ) {
 	buf->oob = qfalse;
+	buf->rawbit = qfalse;
+}
+
+
+void MSG_RawBitstream( msg_t *buf ) {
+	buf->oob = qfalse;
+	buf->rawbit = qtrue;
 }
 
 
@@ -65,6 +72,7 @@ void MSG_BeginReading( msg_t *msg ) {
 	msg->readcount = 0;
 	msg->bit = 0;
 	msg->oob = qfalse;
+	msg->rawbit = qfalse;
 }
 
 
@@ -72,6 +80,7 @@ void MSG_BeginReadingOOB( msg_t *msg ) {
 	msg->readcount = 0;
 	msg->bit = 0;
 	msg->oob = qtrue;
+	msg->rawbit = qfalse;
 }
 
 
@@ -125,6 +134,21 @@ void MSG_WriteBits( msg_t *msg, int value, int bits ) {
 		} else {
 			Com_Error(ERR_DROP, "can't write %d bits", bits);
 		}
+	} else if ( msg->rawbit ) {
+		const int nbits = bits;
+		int bitIndex = msg->bit;
+
+		value &= (0xffffffff >> (32 - bits));
+		for ( i = 0; i < nbits; i++ ) {
+			if ( value & ( 1u << i ) ) {
+				msg->data[ bitIndex >> 3 ] |= 1u << ( bitIndex & 7 );
+			} else {
+				msg->data[ bitIndex >> 3 ] &= ~( 1u << ( bitIndex & 7 ) );
+			}
+			bitIndex++;
+		}
+		msg->bit = bitIndex;
+		msg->cursize = (bitIndex + 7) >> 3;
 	} else {
 		value &= (0xffffffff>>(32-bits));
 		if ( bits & 7 ) {
@@ -194,6 +218,15 @@ static int MSG_ReadBits( msg_t *msg, int bits ) {
 		}
 		else
 			Com_Error( ERR_DROP, "can't read %d bits", bits );
+	} else if ( msg->rawbit ) {
+		int bitIndex = msg->bit;
+
+		for ( i = 0; i < bits; i++ ) {
+			value |= ( ( buffer[ bitIndex >> 3 ] >> ( bitIndex & 7 ) ) & 1 ) << i;
+			bitIndex++;
+		}
+		msg->bit = bitIndex;
+		msg->readcount = (bitIndex + 7) >> 3;
 	} else {
 		const int nbits = bits & 7;
 		int bitIndex = msg->bit; // dereference optimization
@@ -732,6 +765,227 @@ static const netField_t entityStateFields[] =
 { NETF(frame), 16 }
 };
 
+typedef struct {
+	unsigned int	words[2];
+} legacyChangeVector_t;
+
+/*
+Protocol 43-48 demo delta layouts cross-checked against WolfcamQL and the
+UberDemoTools field tables. The 32-entry change-mask dictionary is shared by
+dm3 and dm_48; protocols 46-48 expand the field list.
+*/
+static const netField_t legacyEntityStateFields43[] =
+{
+{ NETF(eType), 8 },
+{ NETF(eFlags), 16 },
+{ NETF(pos.trType), 8 },
+{ NETF(pos.trTime), 32 },
+{ NETF(pos.trDuration), 32 },
+{ NETF(pos.trBase[0]), 0 },
+{ NETF(pos.trBase[1]), 0 },
+{ NETF(pos.trBase[2]), 0 },
+{ NETF(pos.trDelta[0]), 0 },
+{ NETF(pos.trDelta[1]), 0 },
+{ NETF(pos.trDelta[2]), 0 },
+{ NETF(apos.trType), 8 },
+{ NETF(apos.trTime), 32 },
+{ NETF(apos.trDuration), 32 },
+{ NETF(apos.trBase[0]), 0 },
+{ NETF(apos.trBase[1]), 0 },
+{ NETF(apos.trBase[2]), 0 },
+{ NETF(apos.trDelta[0]), 0 },
+{ NETF(apos.trDelta[1]), 0 },
+{ NETF(apos.trDelta[2]), 0 },
+{ NETF(time), 32 },
+{ NETF(time2), 32 },
+{ NETF(origin[0]), 0 },
+{ NETF(origin[1]), 0 },
+{ NETF(origin[2]), 0 },
+{ NETF(origin2[0]), 0 },
+{ NETF(origin2[1]), 0 },
+{ NETF(origin2[2]), 0 },
+{ NETF(angles[0]), 0 },
+{ NETF(angles[1]), 0 },
+{ NETF(angles[2]), 0 },
+{ NETF(angles2[0]), 0 },
+{ NETF(angles2[1]), 0 },
+{ NETF(angles2[2]), 0 },
+{ NETF(otherEntityNum), GENTITYNUM_BITS },
+{ NETF(otherEntityNum2), GENTITYNUM_BITS },
+{ NETF(groundEntityNum), GENTITYNUM_BITS },
+{ NETF(loopSound), 8 },
+{ NETF(constantLight), 32 },
+{ NETF(modelindex), 8 },
+{ NETF(modelindex2), 8 },
+{ NETF(frame), 16 },
+{ NETF(clientNum), 8 },
+{ NETF(solid), 24 },
+{ NETF(event), 10 },
+{ NETF(eventParm), 8 },
+{ NETF(powerups), MAX_POWERUPS },
+{ NETF(weapon), 8 },
+{ NETF(legsAnim), 8 },
+{ NETF(torsoAnim), 8 }
+};
+
+static const netField_t legacyEntityStateFields46[] =
+{
+{ NETF(eType), 8 },
+{ NETF(eFlags), 19 },
+{ NETF(pos.trType), 8 },
+{ NETF(pos.trTime), 32 },
+{ NETF(pos.trDuration), 32 },
+{ NETF(pos.trBase[0]), 0 },
+{ NETF(pos.trBase[1]), 0 },
+{ NETF(pos.trBase[2]), 0 },
+{ NETF(pos.trDelta[0]), 0 },
+{ NETF(pos.trDelta[1]), 0 },
+{ NETF(pos.trDelta[2]), 0 },
+{ NETF(apos.trType), 8 },
+{ NETF(apos.trTime), 32 },
+{ NETF(apos.trDuration), 32 },
+{ NETF(apos.trBase[0]), 0 },
+{ NETF(apos.trBase[1]), 0 },
+{ NETF(apos.trBase[2]), 0 },
+{ NETF(apos.trDelta[0]), 0 },
+{ NETF(apos.trDelta[1]), 0 },
+{ NETF(apos.trDelta[2]), 0 },
+{ NETF(time), 32 },
+{ NETF(time2), 32 },
+{ NETF(origin[0]), 0 },
+{ NETF(origin[1]), 0 },
+{ NETF(origin[2]), 0 },
+{ NETF(origin2[0]), 0 },
+{ NETF(origin2[1]), 0 },
+{ NETF(origin2[2]), 0 },
+{ NETF(angles[0]), 0 },
+{ NETF(angles[1]), 0 },
+{ NETF(angles[2]), 0 },
+{ NETF(angles2[0]), 0 },
+{ NETF(angles2[1]), 0 },
+{ NETF(angles2[2]), 0 },
+{ NETF(otherEntityNum), GENTITYNUM_BITS },
+{ NETF(otherEntityNum2), GENTITYNUM_BITS },
+{ NETF(groundEntityNum), GENTITYNUM_BITS },
+{ NETF(loopSound), 8 },
+{ NETF(constantLight), 32 },
+{ NETF(modelindex), 8 },
+{ NETF(modelindex2), 8 },
+{ NETF(frame), 16 },
+{ NETF(clientNum), 8 },
+{ NETF(solid), 24 },
+{ NETF(event), 10 },
+{ NETF(eventParm), 8 },
+{ NETF(powerups), MAX_POWERUPS },
+{ NETF(weapon), 8 },
+{ NETF(legsAnim), 8 },
+{ NETF(torsoAnim), 8 },
+{ NETF(generic1), 8 }
+};
+
+static const netField_t legacyEntityStateFields48[] =
+{
+{ NETF(eType), 8 },
+{ NETF(eFlags), 19 },
+{ NETF(pos.trType), 8 },
+{ NETF(pos.trTime), 32 },
+{ NETF(pos.trDuration), 32 },
+{ NETF(pos.trBase[0]), 0 },
+{ NETF(pos.trBase[1]), 0 },
+{ NETF(pos.trBase[2]), 0 },
+{ NETF(pos.trDelta[0]), 0 },
+{ NETF(pos.trDelta[1]), 0 },
+{ NETF(pos.trDelta[2]), 0 },
+{ NETF(apos.trType), 8 },
+{ NETF(apos.trTime), 32 },
+{ NETF(apos.trDuration), 32 },
+{ NETF(apos.trBase[0]), 0 },
+{ NETF(apos.trBase[1]), 0 },
+{ NETF(apos.trBase[2]), 0 },
+{ NETF(apos.trDelta[0]), 0 },
+{ NETF(apos.trDelta[1]), 0 },
+{ NETF(apos.trDelta[2]), 0 },
+{ NETF(time), 32 },
+{ NETF(time2), 32 },
+{ NETF(origin[0]), 0 },
+{ NETF(origin[1]), 0 },
+{ NETF(origin[2]), 0 },
+{ NETF(origin2[0]), 0 },
+{ NETF(origin2[1]), 0 },
+{ NETF(origin2[2]), 0 },
+{ NETF(angles[0]), 0 },
+{ NETF(angles[1]), 0 },
+{ NETF(angles[2]), 0 },
+{ NETF(angles2[0]), 0 },
+{ NETF(angles2[1]), 0 },
+{ NETF(angles2[2]), 0 },
+{ NETF(otherEntityNum), GENTITYNUM_BITS },
+{ NETF(otherEntityNum2), GENTITYNUM_BITS },
+{ NETF(groundEntityNum), GENTITYNUM_BITS },
+{ NETF(loopSound), 8 },
+{ NETF(constantLight), 32 },
+{ NETF(modelindex), 8 },
+{ NETF(modelindex2), 8 },
+{ NETF(frame), 16 },
+{ NETF(clientNum), 8 },
+{ NETF(solid), 24 },
+{ NETF(event), 10 },
+{ NETF(eventParm), 8 },
+{ NETF(powerups), MAX_POWERUPS },
+{ NETF(weapon), 8 },
+{ NETF(legsAnim), 8 },
+{ NETF(torsoAnim), 8 },
+{ NETF(generic1), 8 }
+};
+
+static const legacyChangeVector_t legacyEntityStateChangeVectors[] =
+{
+	{ { 0x00008060u, 0x00000000u } },
+	{ { 0x00000060u, 0x00000000u } },
+	{ { 0x0000c060u, 0x00000000u } },
+	{ { 0x000000e1u, 0x00002000u } },
+	{ { 0x00008060u, 0x00001000u } },
+	{ { 0x000080e0u, 0x00000000u } },
+	{ { 0x0000c0e0u, 0x00000000u } },
+	{ { 0x00000000u, 0x00001000u } },
+	{ { 0x00008040u, 0x00000000u } },
+	{ { 0x00008020u, 0x00000000u } },
+	{ { 0x00008060u, 0x00000001u } },
+	{ { 0x000007edu, 0x00008000u } },
+	{ { 0x000000e0u, 0x00000000u } },
+	{ { 0x000007edu, 0x00003000u } },
+	{ { 0x00000080u, 0x00000000u } },
+	{ { 0x00000040u, 0x00000000u } },
+	{ { 0x0000c0e0u, 0x00001000u } },
+	{ { 0x00000060u, 0x00001000u } },
+	{ { 0x00000020u, 0x00000000u } },
+	{ { 0x000000e1u, 0x00002004u } },
+	{ { 0x01c000e1u, 0x00002020u } },
+	{ { 0x0000c0e0u, 0x00000001u } },
+	{ { 0x00004060u, 0x00000000u } },
+	{ { 0x0000c040u, 0x00000000u } },
+	{ { 0x0000c060u, 0x00000001u } },
+	{ { 0x0000c060u, 0x00001000u } },
+	{ { 0x00008060u, 0x00010001u } },
+	{ { 0x00008060u, 0x00003000u } },
+	{ { 0x000080e0u, 0x00001000u } },
+	{ { 0x0000c020u, 0x00000000u } },
+	{ { 0x00008060u, 0x00020000u } }
+};
+
+static void MSG_GetLegacyEntityFields( int protocol, const netField_t **field, int *numFields ) {
+	if ( protocol < 46 ) {
+		*field = legacyEntityStateFields43;
+		*numFields = ARRAY_LEN( legacyEntityStateFields43 );
+	} else if ( protocol == 46 ) {
+		*field = legacyEntityStateFields46;
+		*numFields = ARRAY_LEN( legacyEntityStateFields46 );
+	} else {
+		*field = legacyEntityStateFields48;
+		*numFields = ARRAY_LEN( legacyEntityStateFields48 );
+	}
+}
+
 
 // if (int)f == f and (int)f + ( 1<<(FLOAT_INT_BITS-1) ) < ( 1 << FLOAT_INT_BITS )
 // the float will be sent with FLOAT_INT_BITS, otherwise all 32 bits will be sent
@@ -984,6 +1238,80 @@ void MSG_ReadDeltaEntity( msg_t *msg, const entityState_t *from, entityState_t *
 	}
 }
 
+static qboolean MSG_LegacyChangeVectorHasBit( const legacyChangeVector_t *changeVector, int index ) {
+	return ( changeVector->words[index >> 5] & ( 1u << ( index & 31 ) ) ) != 0;
+}
+
+void MSG_ReadDeltaEntityLegacy( msg_t *msg, const entityState_t *from, entityState_t *to, int number, int protocol ) {
+	const netField_t *field;
+	const legacyChangeVector_t *changeVector;
+	legacyChangeVector_t rawChangeVector;
+	entityState_t dummy;
+	int i;
+	int changeVectorNum;
+	int numFields;
+	int trunc;
+	int *toF;
+
+	if ( number < 0 || number >= MAX_GENTITIES ) {
+		Com_Error( ERR_DROP, "Bad delta entity number: %i", number );
+	}
+
+	if ( !from ) {
+		Com_Memset( &dummy, 0, sizeof( dummy ) );
+		from = &dummy;
+	}
+
+	if ( MSG_ReadBits( msg, 1 ) == 1 ) {
+		Com_Memset( to, 0, sizeof( *to ) );
+		to->number = MAX_GENTITIES - 1;
+		return;
+	}
+
+	if ( MSG_ReadBits( msg, 1 ) == 0 ) {
+		*to = *from;
+		to->number = number;
+		return;
+	}
+
+	*to = *from;
+	to->number = number;
+
+	MSG_GetLegacyEntityFields( protocol, &field, &numFields );
+
+	changeVectorNum = MSG_ReadBits( msg, 5 );
+	if ( changeVectorNum == ARRAY_LEN( legacyEntityStateChangeVectors ) ) {
+		Com_Memset( &rawChangeVector, 0, sizeof( rawChangeVector ) );
+		for ( i = 0; i < numFields; i++ ) {
+			if ( MSG_ReadBits( msg, 1 ) ) {
+				rawChangeVector.words[i >> 5] |= 1u << ( i & 31 );
+			}
+		}
+		changeVector = &rawChangeVector;
+	} else {
+		changeVector = &legacyEntityStateChangeVectors[ changeVectorNum ];
+	}
+
+	for ( i = 0; i < numFields; i++, field++ ) {
+		if ( !MSG_LegacyChangeVectorHasBit( changeVector, i ) ) {
+			continue;
+		}
+
+		toF = (int *)( (byte *)to + field->offset );
+		if ( field->bits == 0 ) {
+			if ( MSG_ReadBits( msg, 1 ) == 0 ) {
+				trunc = MSG_ReadBits( msg, FLOAT_INT_BITS );
+				trunc -= FLOAT_INT_BIAS;
+				*(float *)toF = trunc;
+			} else {
+				*toF = MSG_ReadBits( msg, 32 );
+			}
+		} else {
+			*toF = MSG_ReadBits( msg, field->bits );
+		}
+	}
+}
+
 
 /*
 ============================================================================
@@ -1047,6 +1375,171 @@ static const netField_t playerStateFields[] =
 { PSF(jumppad_ent), GENTITYNUM_BITS },
 { PSF(loopSound), 16 }
 };
+
+static const netField_t legacyPlayerStateFields43[] =
+{
+{ PSF(commandTime), 32 },
+{ PSF(pm_type), 8 },
+{ PSF(bobCycle), 8 },
+{ PSF(pm_flags), 16 },
+{ PSF(pm_time), 16 },
+{ PSF(origin[0]), 0 },
+{ PSF(origin[1]), 0 },
+{ PSF(origin[2]), 0 },
+{ PSF(velocity[0]), 0 },
+{ PSF(velocity[1]), 0 },
+{ PSF(velocity[2]), 0 },
+{ PSF(weaponTime), 16 },
+{ PSF(gravity), 16 },
+{ PSF(speed), 16 },
+{ PSF(delta_angles[0]), 16 },
+{ PSF(delta_angles[1]), 16 },
+{ PSF(delta_angles[2]), 16 },
+{ PSF(groundEntityNum), GENTITYNUM_BITS },
+{ PSF(legsTimer), 8 },
+{ PSF(torsoTimer), 12 },
+{ PSF(legsAnim), 8 },
+{ PSF(torsoAnim), 8 },
+{ PSF(movementDir), 4 },
+{ PSF(eFlags), 16 },
+{ PSF(eventSequence), 16 },
+{ PSF(events[0]), 8 },
+{ PSF(events[1]), 8 },
+{ PSF(eventParms[0]), 8 },
+{ PSF(eventParms[1]), 8 },
+{ PSF(externalEvent), 8 },
+{ PSF(externalEventParm), 8 },
+{ PSF(clientNum), 8 },
+{ PSF(weapon), 5 },
+{ PSF(weaponstate), 4 },
+{ PSF(viewangles[0]), 0 },
+{ PSF(viewangles[1]), 0 },
+{ PSF(viewangles[2]), 0 },
+{ PSF(viewheight), 8 },
+{ PSF(damageEvent), 8 },
+{ PSF(damageYaw), 8 },
+{ PSF(damagePitch), 8 },
+{ PSF(damageCount), 8 },
+{ PSF(grapplePoint[0]), 0 },
+{ PSF(grapplePoint[1]), 0 },
+{ PSF(grapplePoint[2]), 0 }
+};
+
+static const netField_t legacyPlayerStateFields46[] =
+{
+{ PSF(commandTime), 32 },
+{ PSF(pm_type), 8 },
+{ PSF(bobCycle), 8 },
+{ PSF(pm_flags), 16 },
+{ PSF(pm_time), 16 },
+{ PSF(origin[0]), 0 },
+{ PSF(origin[1]), 0 },
+{ PSF(origin[2]), 0 },
+{ PSF(velocity[0]), 0 },
+{ PSF(velocity[1]), 0 },
+{ PSF(velocity[2]), 0 },
+{ PSF(weaponTime), 16 },
+{ PSF(gravity), 16 },
+{ PSF(speed), 16 },
+{ PSF(delta_angles[0]), 16 },
+{ PSF(delta_angles[1]), 16 },
+{ PSF(delta_angles[2]), 16 },
+{ PSF(groundEntityNum), GENTITYNUM_BITS },
+{ PSF(legsTimer), 8 },
+{ PSF(torsoTimer), 12 },
+{ PSF(legsAnim), 8 },
+{ PSF(torsoAnim), 8 },
+{ PSF(movementDir), 4 },
+{ PSF(eFlags), 16 },
+{ PSF(eventSequence), 16 },
+{ PSF(events[0]), 8 },
+{ PSF(events[1]), 8 },
+{ PSF(eventParms[0]), 8 },
+{ PSF(eventParms[1]), 8 },
+{ PSF(externalEvent), 10 },
+{ PSF(externalEventParm), 8 },
+{ PSF(clientNum), 8 },
+{ PSF(weapon), 5 },
+{ PSF(weaponstate), 4 },
+{ PSF(viewangles[0]), 0 },
+{ PSF(viewangles[1]), 0 },
+{ PSF(viewangles[2]), 0 },
+{ PSF(viewheight), -8 },
+{ PSF(damageEvent), 8 },
+{ PSF(damageYaw), 8 },
+{ PSF(damagePitch), 8 },
+{ PSF(damageCount), 8 },
+{ PSF(grapplePoint[0]), 0 },
+{ PSF(grapplePoint[1]), 0 },
+{ PSF(grapplePoint[2]), 0 },
+{ PSF(jumppad_ent), GENTITYNUM_BITS },
+{ PSF(loopSound), 16 }
+};
+
+static const netField_t legacyPlayerStateFields48[] =
+{
+{ PSF(commandTime), 32 },
+{ PSF(pm_type), 8 },
+{ PSF(bobCycle), 8 },
+{ PSF(pm_flags), 16 },
+{ PSF(pm_time), -16 },
+{ PSF(origin[0]), 0 },
+{ PSF(origin[1]), 0 },
+{ PSF(origin[2]), 0 },
+{ PSF(velocity[0]), 0 },
+{ PSF(velocity[1]), 0 },
+{ PSF(velocity[2]), 0 },
+{ PSF(weaponTime), -16 },
+{ PSF(gravity), 16 },
+{ PSF(speed), 16 },
+{ PSF(delta_angles[0]), 16 },
+{ PSF(delta_angles[1]), 16 },
+{ PSF(delta_angles[2]), 16 },
+{ PSF(groundEntityNum), GENTITYNUM_BITS },
+{ PSF(legsTimer), 8 },
+{ PSF(torsoTimer), 12 },
+{ PSF(legsAnim), 8 },
+{ PSF(torsoAnim), 8 },
+{ PSF(movementDir), 4 },
+{ PSF(eFlags), 16 },
+{ PSF(eventSequence), 16 },
+{ PSF(events[0]), 8 },
+{ PSF(events[1]), 8 },
+{ PSF(eventParms[0]), 8 },
+{ PSF(eventParms[1]), 8 },
+{ PSF(externalEvent), 10 },
+{ PSF(externalEventParm), 8 },
+{ PSF(clientNum), 8 },
+{ PSF(weapon), 5 },
+{ PSF(weaponstate), 4 },
+{ PSF(viewangles[0]), 0 },
+{ PSF(viewangles[1]), 0 },
+{ PSF(viewangles[2]), 0 },
+{ PSF(viewheight), -8 },
+{ PSF(damageEvent), 8 },
+{ PSF(damageYaw), 8 },
+{ PSF(damagePitch), 8 },
+{ PSF(damageCount), 8 },
+{ PSF(grapplePoint[0]), 0 },
+{ PSF(grapplePoint[1]), 0 },
+{ PSF(grapplePoint[2]), 0 },
+{ PSF(jumppad_ent), GENTITYNUM_BITS },
+{ PSF(loopSound), 16 },
+{ PSF(generic1), 8 }
+};
+
+static void MSG_GetLegacyPlayerFields( int protocol, const netField_t **field, int *numFields ) {
+	if ( protocol < 46 ) {
+		*field = legacyPlayerStateFields43;
+		*numFields = ARRAY_LEN( legacyPlayerStateFields43 );
+	} else if ( protocol == 46 ) {
+		*field = legacyPlayerStateFields46;
+		*numFields = ARRAY_LEN( legacyPlayerStateFields46 );
+	} else {
+		*field = legacyPlayerStateFields48;
+		*numFields = ARRAY_LEN( legacyPlayerStateFields48 );
+	}
+}
 
 /*
 =============
@@ -1343,6 +1836,79 @@ void MSG_ReadDeltaPlayerstate( msg_t *msg, const playerState_t *from, playerStat
 			endBit = ( msg->readcount - 1 ) * 8 + msg->bit - GENTITYNUM_BITS;
 		}
 		Com_Printf( " (%i bits)\n", endBit - startBit  );
+	}
+}
+
+void MSG_ReadDeltaPlayerstateLegacy( msg_t *msg, const playerState_t *from, playerState_t *to, int protocol ) {
+	int i;
+	int trunc;
+	int *toF;
+	const netField_t *field;
+	int numFields;
+	int mask;
+	playerState_t dummy;
+
+	if ( !from ) {
+		from = &dummy;
+		Com_Memset( &dummy, 0, sizeof( dummy ) );
+	}
+	*to = *from;
+
+	MSG_GetLegacyPlayerFields( protocol, &field, &numFields );
+
+	for ( i = 0; i < numFields; i++, field++ ) {
+		if ( !MSG_ReadBits( msg, 1 ) ) {
+			continue;
+		}
+
+		toF = (int *)( (byte *)to + field->offset );
+		if ( field->bits == 0 ) {
+			if ( MSG_ReadBits( msg, 1 ) == 0 ) {
+				trunc = MSG_ReadBits( msg, FLOAT_INT_BITS );
+				trunc -= FLOAT_INT_BIAS;
+				*(float *)toF = trunc;
+			} else {
+				*toF = MSG_ReadBits( msg, 32 );
+			}
+		} else {
+			*toF = MSG_ReadBits( msg, field->bits );
+		}
+	}
+
+	if ( MSG_ReadBits( msg, 1 ) ) {
+		mask = MSG_ReadBits( msg, MAX_STATS );
+		for ( i = 0; i < MAX_STATS; i++ ) {
+			if ( mask & ( 1 << i ) ) {
+				to->stats[i] = MSG_ReadBits( msg, -16 );
+			}
+		}
+	}
+
+	if ( MSG_ReadBits( msg, 1 ) ) {
+		mask = MSG_ReadBits( msg, MAX_PERSISTANT );
+		for ( i = 0; i < MAX_PERSISTANT; i++ ) {
+			if ( mask & ( 1 << i ) ) {
+				to->persistant[i] = MSG_ReadBits( msg, 16 );
+			}
+		}
+	}
+
+	if ( MSG_ReadBits( msg, 1 ) ) {
+		mask = MSG_ReadBits( msg, MAX_WEAPONS );
+		for ( i = 0; i < MAX_WEAPONS; i++ ) {
+			if ( mask & ( 1 << i ) ) {
+				to->ammo[i] = MSG_ReadBits( msg, 16 );
+			}
+		}
+	}
+
+	if ( MSG_ReadBits( msg, 1 ) ) {
+		mask = MSG_ReadBits( msg, MAX_POWERUPS );
+		for ( i = 0; i < MAX_POWERUPS; i++ ) {
+			if ( mask & ( 1 << i ) ) {
+				to->powerups[i] = MSG_ReadBits( msg, 32 );
+			}
+		}
 	}
 }
 
