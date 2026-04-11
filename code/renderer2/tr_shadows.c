@@ -152,6 +152,124 @@ static void R_EnemyHighlightBindRimShader( void ) {
 }
 
 
+static int R_CelShadeBandCount( void ) {
+	int bands = 4;
+
+	if ( r_celShadingSteps ) {
+		bands = r_celShadingSteps->integer;
+	}
+
+	return Com_Clamp( 2, 8, bands );
+}
+
+
+qboolean R_CelShadingActive( const trRefEntity_t *ent ) {
+	if ( !ent || !r_celShading || !r_celShading->integer ) {
+		return qfalse;
+	}
+
+	return ent->e.reType == RT_MODEL;
+}
+
+
+qboolean R_CelOutlineActive( const trRefEntity_t *ent, const shader_t *shader ) {
+	if ( !R_CelShadingActive( ent ) || !r_celOutline || !r_celOutline->integer ) {
+		return qfalse;
+	}
+
+	if ( shader == tr.projectionShadowShader ) {
+		return qfalse;
+	}
+
+	if ( !shader || shader->sort > SS_OPAQUE ) {
+		return qfalse;
+	}
+
+	if ( glConfig.stencilBits <= 0 || r_measureOverdraw->integer ) {
+		return qfalse;
+	}
+
+	if ( backEnd.depthFill || ( backEnd.viewParms.flags & ( VPF_SHADOWMAP | VPF_DEPTHSHADOW ) ) ) {
+		return qfalse;
+	}
+
+	return qtrue;
+}
+
+
+void R_GetCelShadeInfo( const trRefEntity_t *ent, vec4_t outInfo ) {
+	Vector4Set( outInfo, 0.0f, 0.0f, 0.0f, 0.0f );
+
+	if ( !R_CelShadingActive( ent ) ) {
+		return;
+	}
+
+	outInfo[0] = 1.0f;
+	outInfo[1] = (float)R_CelShadeBandCount();
+}
+
+
+static float R_CelOutlineOffset( void ) {
+	float scale = r_celOutlineScale ? r_celOutlineScale->value : 1.02f;
+
+	return R_EnemyHighlightOffset( scale, 1.02f );
+}
+
+
+static void R_GetCelOutlineColor( color4ub_t *outColor ) {
+	static color4ub_t cachedColor = { { 0, 0, 0, 255 } };
+	static qboolean initialized = qfalse;
+	char buffer[MAX_CVAR_VALUE_STRING];
+	char *parts[4];
+	int count;
+	int i;
+
+	if ( !outColor ) {
+		return;
+	}
+
+	if ( initialized && ( !r_celOutlineColor || !r_celOutlineColor->modified ) ) {
+		*outColor = cachedColor;
+		return;
+	}
+
+	initialized = qtrue;
+	if ( r_celOutlineColor ) {
+		r_celOutlineColor->modified = qfalse;
+	}
+
+	if ( !r_celOutlineColor || !r_celOutlineColor->string[0] ) {
+		*outColor = cachedColor;
+		return;
+	}
+
+	Q_strncpyz( buffer, r_celOutlineColor->string, sizeof( buffer ) );
+	count = Com_Split( buffer, parts, 4, ' ' );
+	if ( count < 3 ) {
+		*outColor = cachedColor;
+		return;
+	}
+
+	for ( i = 0; i < count && i < 4; i++ ) {
+		float value = Q_atof( parts[i] );
+
+		if ( value < 0.0f ) {
+			value = 0.0f;
+		} else if ( value > 255.0f ) {
+			value = 255.0f;
+		}
+
+		cachedColor.rgba[i] = (byte)( value + 0.5f );
+	}
+
+	if ( count < 4 ) {
+		cachedColor.rgba[3] = 255;
+	}
+
+	*outColor = cachedColor;
+}
+
+
 static void R_EnemyHighlightColor( const color4ub_t *color ) {
 	int i;
 	vec3_t normal;
@@ -220,6 +338,58 @@ void RB_EnemyOutlineTessEnd( void ) {
 	GL_Cull( CT_BACK_SIDED );
 	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
 	R_EnemyHighlightBindTextureColorShader( &backEnd.currentEntity->e.shader );
+	R_DrawElements( tess.numIndexes, tess.firstIndex );
+
+	R_EnemyHighlightRestore( originalXYZ );
+	RB_UpdateTessVao( ATTR_POSITION );
+	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+	qglStencilFunc( GL_ALWAYS, 0, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_ZERO );
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_ONE );
+	R_EnemyHighlightBindTextureColorShader( &clearColor );
+	R_DrawElements( tess.numIndexes, tess.firstIndex );
+
+	qglColorMask( rgba[0], rgba[1], rgba[2], rgba[3] );
+	qglDisable( GL_STENCIL_TEST );
+}
+
+
+void RB_CelOutlineTessEnd( void ) {
+	GLboolean rgba[4];
+	vec4_t originalXYZ[SHADER_MAX_VERTEXES];
+	static const color4ub_t clearColor = { { 0, 0, 0, 0 } };
+	color4ub_t outlineColor;
+	float offset;
+
+	if ( !R_CelOutlineActive( backEnd.currentEntity, tess.shader ) ) {
+		return;
+	}
+
+	offset = R_CelOutlineOffset();
+	R_GetCelOutlineColor( &outlineColor );
+
+	qglEnable( GL_STENCIL_TEST );
+	qglStencilMask( 255 );
+
+	qglGetBooleanv( GL_COLOR_WRITEMASK, rgba );
+	qglColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+	qglStencilFunc( GL_ALWAYS, 1, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_REPLACE );
+	GL_Cull( CT_FRONT_SIDED );
+	GL_State( GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_ONE );
+	RB_UpdateTessVao( ATTR_POSITION | ATTR_TEXCOORD );
+	R_EnemyHighlightBindTextureColorShader( &clearColor );
+	R_DrawElements( tess.numIndexes, tess.firstIndex );
+
+	R_EnemyHighlightExpand( originalXYZ, offset );
+	RB_UpdateTessVao( ATTR_POSITION );
+	qglColorMask( rgba[0], rgba[1], rgba[2], rgba[3] );
+	qglStencilFunc( GL_NOTEQUAL, 1, 255 );
+	qglStencilOp( GL_KEEP, GL_KEEP, GL_KEEP );
+	GL_Cull( CT_BACK_SIDED );
+	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
+	R_EnemyHighlightBindTextureColorShader( &outlineColor );
 	R_DrawElements( tess.numIndexes, tess.firstIndex );
 
 	R_EnemyHighlightRestore( originalXYZ );

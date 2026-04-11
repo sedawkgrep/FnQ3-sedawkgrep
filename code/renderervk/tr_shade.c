@@ -547,6 +547,34 @@ uint32_t VK_PushUniform( const vkUniform_t *uniform );
 void VK_SetFogParams( vkUniform_t *uniform, int *fogStage );
 static vkUniform_t uniform;
 
+static float VK_ComputeTextureIntensityScale( const image_t *image )
+{
+	if ( image == NULL || r_intensity->value <= 1.0f )
+	{
+		return 1.0f;
+	}
+
+	if ( image->flags & IMGFLAG_NOLIGHTSCALE )
+	{
+		return 1.0f;
+	}
+
+	if ( ( image->flags & IMGFLAG_MIPMAP ) || image->uploadWidth != image->width || image->uploadHeight != image->height )
+	{
+		return r_intensity->value;
+	}
+
+	return 1.0f;
+}
+
+static void VK_SetTextureFactors( vkUniform_t *uniform, const shaderStage_t *pStage, int bundle )
+{
+	uniform->texFactors[0] = VK_ComputeTextureIntensityScale( pStage->bundle[ bundle ].image[0] );
+	uniform->texFactors[1] = 1.0f;
+	uniform->texFactors[2] = 1.0f;
+	uniform->texFactors[3] = 1.0f;
+}
+
 /*
 ===================
 RB_FogPass
@@ -1000,6 +1028,9 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 			}
 		}
 
+		VK_SetTextureFactors( &uniform, pStage, 0 );
+		pushUniform = qtrue;
+
 		if ( pushUniform ) {
 			pushUniform = qfalse;
 			VK_PushUniform( &uniform );
@@ -1177,18 +1208,13 @@ void VK_LightingPass( void )
 
 	pStage = tess.xstages[ tess.shader->lightingStage ];
 
-	// we may need to update programs for fog transitions
-	if ( tess.dlightUpdateParams ) {
+	// fog, light and texture scaling are all surface-dependent in the shader path.
+	VK_SetFogParams( &uniform, &fog_stage );
+	VK_SetLightParams( &uniform, tess.light );
+	VK_SetTextureFactors( &uniform, pStage, tess.shader->lightingBundle );
 
-		// fog parameters
-		VK_SetFogParams( &uniform, &fog_stage );
-		// light parameters
-		VK_SetLightParams( &uniform, tess.light );
-
-		uniform_offset = VK_PushUniform( &uniform );
-
-		tess.dlightUpdateParams = qfalse;
-	}
+	uniform_offset = VK_PushUniform( &uniform );
+	tess.dlightUpdateParams = qfalse;
 
 	if ( uniform_offset == ~0 )
 		return; // no space left...
@@ -1468,6 +1494,7 @@ void RB_EndSurface( void ) {
 	// call off to shader specific tess end function
 	//
 	tess.shader->optimalStageIteratorFunc();
+	RB_CelOutlineTessEnd();
 
 	//
 	// draw debugging stuff

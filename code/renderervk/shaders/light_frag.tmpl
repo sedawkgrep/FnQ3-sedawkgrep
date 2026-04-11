@@ -13,6 +13,7 @@ layout(set = 0, binding = 0) uniform UBO {
 	vec4 fogEyeT;				// vertex
 	vec4 fogColor;				// fragment
 #endif
+	vec4 texFactors;			// fragment
 };
 
 layout(set = 1, binding = 0) uniform sampler2D texture0;
@@ -53,6 +54,7 @@ void main() {
 	vec4 fog = texture(fogtexture, fog_tex_coord);
 #endif
 	vec4 base = texture(texture0, frag_tex_coord);
+	base.rgb *= texFactors.x;
 
 	if ( alpha_to_coverage != 0 ) {
 		if (alpha_test_func == 1) {

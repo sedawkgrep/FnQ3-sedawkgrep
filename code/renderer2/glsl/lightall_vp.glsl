@@ -60,6 +60,7 @@ uniform vec4   u_LightOrigin;
 uniform float  u_LightRadius;
 uniform vec3   u_DirectedLight;
 uniform vec3   u_AmbientLight;
+uniform vec4   u_CelShadeInfo;
 #endif
 
 #if defined(USE_PRIMARY_LIGHT) || defined(USE_SHADOWMAP)
@@ -148,6 +149,28 @@ float CalcLightAttenuation(float point, float normDist)
 }
 
 
+#if defined(USE_LIGHT_VECTOR)
+float QuantizeCelLighting( float intensity )
+{
+#if defined(USE_FAST_LIGHT)
+	float bands = max( u_CelShadeInfo.y, 1.0 );
+	float denom;
+
+	if ( u_CelShadeInfo.x <= 0.0 || bands <= 1.0 ) {
+		return intensity;
+	}
+
+	intensity = clamp( intensity, 0.0, 1.0 );
+	denom = max( bands - 1.0, 1.0 );
+
+	return min( floor( intensity * bands ), bands - 1.0 ) / denom;
+#else
+	return intensity;
+#endif
+}
+#endif
+
+
 void main()
 {
 #if defined(USE_VERTEX_ANIMATION)
@@ -223,6 +246,7 @@ void main()
 	float NL = clamp(dot(normalize(normal), L) / sqrt(sqrLightDist), 0.0, 1.0);
 	float attenuation = CalcLightAttenuation(u_LightOrigin.w, u_LightRadius * u_LightRadius / sqrLightDist);
 
+	NL = QuantizeCelLighting( NL );
 	var_Color.rgb *= u_DirectedLight * (attenuation * NL) + u_AmbientLight;
   #else
 	var_ColorAmbient.rgb = u_AmbientLight * var_Color.rgb;

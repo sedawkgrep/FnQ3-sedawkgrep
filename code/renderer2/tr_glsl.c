@@ -105,6 +105,7 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_Color",     GLSL_VEC4 },
 	{ "u_BaseColor", GLSL_VEC4 },
 	{ "u_VertColor", GLSL_VEC4 },
+	{ "u_TextureScale", GLSL_VEC4 },
 
 	{ "u_DlightInfo",    GLSL_VEC4 },
 	{ "u_LightForward",  GLSL_VEC3 },
@@ -115,6 +116,7 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_LightRadius",   GLSL_FLOAT },
 	{ "u_AmbientLight",  GLSL_VEC3 },
 	{ "u_DirectedLight", GLSL_VEC3 },
+	{ "u_CelShadeInfo",  GLSL_VEC4 },
 
 	{ "u_PortalRange", GLSL_FLOAT },
 

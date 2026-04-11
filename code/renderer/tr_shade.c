@@ -1083,6 +1083,7 @@ void RB_EndSurface( void ) {
 	// call off to shader specific tess end function
 	//
 	tess.shader->optimalStageIteratorFunc();
+	RB_CelOutlineTessEnd();
 
 	//
 	// draw debugging stuff

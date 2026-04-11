@@ -1254,51 +1254,24 @@ lighting range
 */
 static void R_LightScaleTexture (byte *in, int inwidth, int inheight, qboolean only_gamma )
 {
-	if ( only_gamma )
+	int		i, c;
+	byte	*p;
+
+	(void)only_gamma;
+
+	if ( glConfig.deviceSupportsGamma || glRefConfig.framebufferObject )
 	{
-		if ( !glConfig.deviceSupportsGamma )
-		{
-			int		i, c;
-			byte	*p;
-
-			p = in;
-
-			c = inwidth*inheight;
-			for (i=0 ; i<c ; i++, p+=4)
-			{
-				p[0] = s_gammatable[p[0]];
-				p[1] = s_gammatable[p[1]];
-				p[2] = s_gammatable[p[2]];
-			}
-		}
+		return;
 	}
-	else
+
+	p = in;
+	c = inwidth * inheight;
+
+	for ( i = 0; i < c; i++, p += 4 )
 	{
-		int		i, c;
-		byte	*p;
-
-		p = in;
-
-		c = inwidth*inheight;
-
-		if ( glConfig.deviceSupportsGamma )
-		{
-			for (i=0 ; i<c ; i++, p+=4)
-			{
-				p[0] = s_intensitytable[p[0]];
-				p[1] = s_intensitytable[p[1]];
-				p[2] = s_intensitytable[p[2]];
-			}
-		}
-		else
-		{
-			for (i=0 ; i<c ; i++, p+=4)
-			{
-				p[0] = s_gammatable[s_intensitytable[p[0]]];
-				p[1] = s_gammatable[s_intensitytable[p[1]]];
-				p[2] = s_gammatable[s_intensitytable[p[2]]];
-			}
-		}
+		p[0] = s_gammatable[p[0]];
+		p[1] = s_gammatable[p[1]];
+		p[2] = s_gammatable[p[2]];
 	}
 }
 

@@ -569,6 +569,34 @@ static void ComputeShaderColors( const shaderStage_t *pStage, vec4_t baseColor, 
 #endif
 }
 
+static float ComputeTextureIntensityScale( const image_t *image )
+{
+	if ( image == NULL || r_intensity->value <= 1.0f )
+	{
+		return 1.0f;
+	}
+
+	if ( image->type != IMGTYPE_COLORALPHA || ( image->flags & IMGFLAG_NOLIGHTSCALE ) )
+	{
+		return 1.0f;
+	}
+
+	if ( ( image->flags & IMGFLAG_MIPMAP ) || image->uploadWidth != image->width || image->uploadHeight != image->height )
+	{
+		return r_intensity->value;
+	}
+
+	return 1.0f;
+}
+
+static void ComputeTextureScales( const shaderStage_t *pStage, vec4_t textureScale )
+{
+	textureScale[0] = ComputeTextureIntensityScale( pStage->bundle[TB_DIFFUSEMAP].image[0] );
+	textureScale[1] = ComputeTextureIntensityScale( pStage->bundle[1].image[0] );
+	textureScale[2] = ComputeTextureIntensityScale( pStage->bundle[2].image[0] );
+	textureScale[3] = ComputeTextureIntensityScale( pStage->bundle[TB_SPECULARMAP].image[0] );
+}
+
 
 static void ComputeFogValues(vec4_t fogDistanceVector, vec4_t fogDepthVector, float *eyeT)
 {
@@ -668,6 +696,7 @@ static void ForwardDlight( void ) {
 		vec4_t vector;
 		vec4_t texMatrix;
 		vec4_t texOffTurb;
+		vec4_t celShadeInfo;
 
 		if ( !( tess.dlightBits & ( 1 << l ) ) ) {
 			continue;	// this surface definitely doesn't have any of this light
@@ -734,6 +763,14 @@ static void ForwardDlight( void ) {
 
 		GLSL_SetUniformInt(sp, UNIFORM_COLORGEN, pStage->rgbGen);
 		GLSL_SetUniformInt(sp, UNIFORM_ALPHAGEN, pStage->alphaGen);
+		R_GetCelShadeInfo( backEnd.currentEntity, celShadeInfo );
+		GLSL_SetUniformVec4( sp, UNIFORM_CELSHADEINFO, celShadeInfo );
+		{
+			vec4_t textureScale;
+
+			ComputeTextureScales( pStage, textureScale );
+			GLSL_SetUniformVec4( sp, UNIFORM_TEXTURESCALE, textureScale );
+		}
 
 		GLSL_SetUniformVec3(sp, UNIFORM_DIRECTEDLIGHT, dl->color);
 
@@ -999,6 +1036,7 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 		shaderProgram_t *sp;
 		vec4_t texMatrix;
 		vec4_t texOffTurb;
+		vec4_t celShadeInfo;
 
 		if ( !pStage )
 		{
@@ -1173,6 +1211,14 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 
 		GLSL_SetUniformInt(sp, UNIFORM_COLORGEN, pStage->rgbGen);
 		GLSL_SetUniformInt(sp, UNIFORM_ALPHAGEN, pStage->alphaGen);
+		R_GetCelShadeInfo( backEnd.currentEntity, celShadeInfo );
+		GLSL_SetUniformVec4( sp, UNIFORM_CELSHADEINFO, celShadeInfo );
+		{
+			vec4_t textureScale;
+
+			ComputeTextureScales( pStage, textureScale );
+			GLSL_SetUniformVec4( sp, UNIFORM_TEXTURESCALE, textureScale );
+		}
 
 		if ( input->fogNum )
 		{
@@ -1659,6 +1705,7 @@ void RB_EndSurface( void ) {
 	// call off to shader specific tess end function
 	//
 	tess.currentStageIteratorFunc();
+	RB_CelOutlineTessEnd();
 
 	//
 	// draw debugging stuff

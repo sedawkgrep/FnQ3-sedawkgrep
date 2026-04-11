@@ -1244,6 +1244,11 @@ extern cvar_t	*r_fastsky;				// controls whether sky should be cleared or drawn
 extern cvar_t	*r_neatsky;				// nomip and nopicmip for skyboxes, cnq3 like look
 extern cvar_t	*r_drawSun;				// controls drawing of sun quad
 extern cvar_t	*r_dynamiclight;		// dynamic lights enabled/disabled
+extern cvar_t	*r_celShading;			// cel shading enabled/disabled on model entities
+extern cvar_t	*r_celShadingSteps;		// diffuse lighting bands for cel shading
+extern cvar_t	*r_celOutline;			// outline shell enabled/disabled on model entities
+extern cvar_t	*r_celOutlineScale;		// shell expansion factor for cel outlines
+extern cvar_t	*r_celOutlineColor;		// outline color in "r g b a"
 extern cvar_t	*r_mergeLightmaps;
 #ifdef USE_PMLIGHT
 extern cvar_t	*r_dlightMode;			// 0 - vq3, 1 - pmlight
@@ -1661,7 +1666,11 @@ void RB_ShadowTessEnd( void );
 void RB_ShadowFinish( void );
 void RB_EnemyRimTessEnd( void );
 void RB_EnemyOutlineTessEnd( void );
+void RB_CelOutlineTessEnd( void );
 void RB_ProjectionShadowDeform( void );
+qboolean R_CelShadingActive( const trRefEntity_t *ent );
+qboolean R_CelOutlineActive( const trRefEntity_t *ent, const shader_t *shader );
+float R_CelQuantizeIncoming( float incoming );
 
 /*
 ============================================================

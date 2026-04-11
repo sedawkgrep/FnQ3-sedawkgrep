@@ -63,6 +63,10 @@ uniform mat4 u_BoneMatrix[MAX_GLSL_BONES];
 
 varying vec2   var_DiffuseTex;
 varying vec4   var_Color;
+#if defined(USE_RGBAGEN)
+varying vec3   var_Position;
+varying vec3   var_Normal;
+#endif
 
 #if defined(USE_DEFORM_VERTEXES)
 vec3 DeformPosition(const vec3 pos, const vec3 normal, const vec2 st)
@@ -243,6 +247,8 @@ void main()
 
 #if defined(USE_RGBAGEN)
 	var_Color = CalcColor(position, normal);
+	var_Position = position;
+	var_Normal = normalize(normal);
 #else
 	var_Color = u_VertColor * attr_Color + u_BaseColor;
 #endif

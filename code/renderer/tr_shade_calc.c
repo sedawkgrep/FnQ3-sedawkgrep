@@ -1256,7 +1256,8 @@ static void RB_CalcDiffuseColor_scalar( unsigned char *colors )
 		if ( incoming <= 0 ) {
 			*(int *)&colors[i*4] = ambientLightInt;
 			continue;
-		} 
+		}
+		incoming = R_CelQuantizeIncoming( incoming );
 		j = myftol( ambientLight[0] + incoming * directedLight[0] );
 		if ( j > 255 ) {
 			j = 255;

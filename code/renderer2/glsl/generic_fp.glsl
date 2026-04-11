@@ -1,15 +1,51 @@
 uniform sampler2D u_DiffuseMap;
 
 uniform int       u_AlphaTest;
+uniform vec4      u_TextureScale;
 
 varying vec2      var_DiffuseTex;
 
 varying vec4      var_Color;
+#if defined(USE_RGBAGEN)
+uniform int       u_ColorGen;
+uniform vec3      u_AmbientLight;
+uniform vec3      u_DirectedLight;
+uniform vec3      u_ModelLightDir;
+uniform vec4      u_CelShadeInfo;
+
+varying vec3      var_Position;
+varying vec3      var_Normal;
+
+float QuantizeCelLighting( float intensity )
+{
+	float bands = max( u_CelShadeInfo.y, 1.0 );
+
+	if ( u_CelShadeInfo.x <= 0.0 || bands <= 1.0 ) {
+		return intensity;
+	}
+
+	intensity = clamp( intensity, 0.0, 1.0 );
+
+	{
+		float scaled = intensity * bands;
+		float baseBand = floor( scaled );
+		float denom = max( bands - 1.0, 1.0 );
+		float bandValue = min( baseBand, bands - 1.0 ) / denom;
+		float nextBandValue = min( baseBand + 1.0, bands - 1.0 ) / denom;
+		float edge = fract( scaled );
+		float width = max( fwidth( scaled ), 0.0001 );
+		float blend = smoothstep( 1.0 - width, 1.0 + width, edge );
+
+		return mix( bandValue, nextBandValue, blend );
+	}
+}
+#endif
 
 
 void main()
 {
 	vec4 color  = texture2D(u_DiffuseMap, var_DiffuseTex);
+	color.rgb *= u_TextureScale.x;
 
 	float alpha = color.a * var_Color.a;
 	if (u_AlphaTest == 1)
@@ -28,6 +64,19 @@ void main()
 			discard;
 	}
 	
-	gl_FragColor.rgb = color.rgb * var_Color.rgb;
+	{
+		vec3 shadeColor = var_Color.rgb;
+
+#if defined(USE_RGBAGEN)
+		if ( u_ColorGen == CGEN_LIGHTING_DIFFUSE && u_CelShadeInfo.x > 0.0 ) {
+			float incoming = clamp( dot( normalize( var_Normal ), normalize( u_ModelLightDir ) ), 0.0, 1.0 );
+
+			incoming = QuantizeCelLighting( incoming );
+			shadeColor = clamp( u_DirectedLight * incoming + u_AmbientLight, 0.0, 1.0 );
+		}
+#endif
+
+		gl_FragColor.rgb = color.rgb * shadeColor;
+	}
 	gl_FragColor.a = alpha;
 }

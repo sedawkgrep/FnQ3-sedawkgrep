@@ -147,17 +147,152 @@ static void R_EnemyHighlightBindTexture( void ) {
 }
 
 
-static void R_EnemyHighlightBindOutlineResources( void ) {
+static int R_CelShadeBandCount( void ) {
+	int bands = 4;
+
+	if ( r_celShadingSteps ) {
+		bands = r_celShadingSteps->integer;
+	}
+
+	return Com_Clamp( 2, 8, bands );
+}
+
+
+qboolean R_CelShadingActive( const trRefEntity_t *ent ) {
+	if ( !ent || !r_celShading || !r_celShading->integer ) {
+		return qfalse;
+	}
+
+	return ent->e.reType == RT_MODEL;
+}
+
+
+qboolean R_CelOutlineActive( const trRefEntity_t *ent, const shader_t *shader ) {
+	if ( !R_CelShadingActive( ent ) || !r_celOutline || !r_celOutline->integer ) {
+		return qfalse;
+	}
+
+	if ( shader == tr.projectionShadowShader ) {
+		return qfalse;
+	}
+
+	if ( !shader || shader->sort > SS_OPAQUE ) {
+		return qfalse;
+	}
+
+	if ( glConfig.stencilBits <= 0 ) {
+		return qfalse;
+	}
+
+	return qtrue;
+}
+
+
+float R_CelQuantizeIncoming( float incoming ) {
+	float bands;
+	float scaled;
+	float denom;
+
+	if ( incoming <= 0.0f ) {
+		return 0.0f;
+	}
+
+	if ( incoming >= 1.0f || !R_CelShadingActive( backEnd.currentEntity ) ) {
+		return incoming;
+	}
+
+	bands = (float)R_CelShadeBandCount();
+	scaled = floorf( incoming * bands );
+	if ( scaled >= bands ) {
+		scaled = bands - 1.0f;
+	}
+
+	denom = bands - 1.0f;
+	if ( denom <= 0.0f ) {
+		return incoming;
+	}
+
+	return scaled / denom;
+}
+
+
+static float R_CelOutlineOffset( void ) {
+	float scale = r_celOutlineScale ? r_celOutlineScale->value : 1.02f;
+
+	return R_EnemyHighlightOffset( scale, 1.02f );
+}
+
+
+static void R_GetCelOutlineColor( color4ub_t *outColor ) {
+	static color4ub_t cachedColor = { { 0, 0, 0, 255 } };
+	static qboolean initialized = qfalse;
+	char buffer[MAX_CVAR_VALUE_STRING];
+	char *parts[4];
+	int count;
+	int i;
+
+	if ( !outColor ) {
+		return;
+	}
+
+	if ( initialized && ( !r_celOutlineColor || !r_celOutlineColor->modified ) ) {
+		*outColor = cachedColor;
+		return;
+	}
+
+	initialized = qtrue;
+	if ( r_celOutlineColor ) {
+		r_celOutlineColor->modified = qfalse;
+	}
+
+	if ( !r_celOutlineColor || !r_celOutlineColor->string[0] ) {
+		*outColor = cachedColor;
+		return;
+	}
+
+	Q_strncpyz( buffer, r_celOutlineColor->string, sizeof( buffer ) );
+	count = Com_Split( buffer, parts, 4, ' ' );
+	if ( count < 3 ) {
+		*outColor = cachedColor;
+		return;
+	}
+
+	for ( i = 0; i < count && i < 4; i++ ) {
+		float value = Q_atof( parts[i] );
+
+		if ( value < 0.0f ) {
+			value = 0.0f;
+		} else if ( value > 255.0f ) {
+			value = 255.0f;
+		}
+
+		cachedColor.rgba[i] = (byte)( value + 0.5f );
+	}
+
+	if ( count < 4 ) {
+		cachedColor.rgba[3] = 255;
+	}
+
+	*outColor = cachedColor;
+}
+
+
+static void R_BindOutlineResources( const color4ub_t *color ) {
 	vkUniform_t uniform;
 
 	Com_Memset( &uniform, 0, sizeof( uniform ) );
-	uniform.ent.color[0][0] = backEnd.currentEntity->e.shader.rgba[0] / 255.0f;
-	uniform.ent.color[0][1] = backEnd.currentEntity->e.shader.rgba[1] / 255.0f;
-	uniform.ent.color[0][2] = backEnd.currentEntity->e.shader.rgba[2] / 255.0f;
-	uniform.ent.color[0][3] = backEnd.currentEntity->e.shader.rgba[3] / 255.0f;
+	uniform.ent.color[0][0] = color->rgba[0] / 255.0f;
+	uniform.ent.color[0][1] = color->rgba[1] / 255.0f;
+	uniform.ent.color[0][2] = color->rgba[2] / 255.0f;
+	uniform.ent.color[0][3] = color->rgba[3] / 255.0f;
 
 	R_EnemyHighlightBindTexture();
 	VK_PushUniform( &uniform );
+}
+
+
+static void R_EnemyHighlightBindOutlineResources( void ) {
+	R_BindOutlineResources( &backEnd.currentEntity->e.shader );
 }
 
 
@@ -206,6 +341,36 @@ void RB_EnemyOutlineTessEnd( void ) {
 
 	offset = R_EnemyHighlightOffset( backEnd.currentEntity->e.shaderTexCoord[0], 1.01f );
 	R_EnemyHighlightBindOutlineResources();
+
+	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_DEPTHFUNC_EQUAL, CT_FRONT_SIDED, SHADOW_OUTLINE_MASK, TYPE_SIGNLE_TEXTURE_ENT_COLOR ) );
+	vk_bind_index();
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qtrue );
+
+	R_EnemyHighlightExpand( originalXYZ, offset );
+	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA, CT_BACK_SIDED, SHADOW_OUTLINE_SHELL, TYPE_SIGNLE_TEXTURE_ENT_COLOR ) );
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qtrue );
+
+	R_EnemyHighlightRestore( originalXYZ );
+	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_DEPTHFUNC_EQUAL, CT_FRONT_SIDED, SHADOW_OUTLINE_CLEAR, TYPE_SIGNLE_TEXTURE_ENT_COLOR ) );
+	vk_bind_geometry( TESS_XYZ | TESS_ST0 );
+	vk_draw_geometry( DEPTH_RANGE_NORMAL, qtrue );
+}
+
+
+void RB_CelOutlineTessEnd( void ) {
+	vec4_t originalXYZ[SHADER_MAX_VERTEXES];
+	color4ub_t outlineColor;
+	float offset;
+
+	if ( !R_CelOutlineActive( backEnd.currentEntity, tess.shader ) ) {
+		return;
+	}
+
+	offset = R_CelOutlineOffset();
+	R_GetCelOutlineColor( &outlineColor );
+	R_BindOutlineResources( &outlineColor );
 
 	vk_bind_pipeline( R_EnemyHighlightPipeline( GLS_DEPTHFUNC_EQUAL, CT_FRONT_SIDED, SHADOW_OUTLINE_MASK, TYPE_SIGNLE_TEXTURE_ENT_COLOR ) );
 	vk_bind_index();

@@ -8,7 +8,6 @@
 #define USE_CL1
 #endif
 
-#if defined (USE_FOG) || defined (USE_ENT_COLOR)
 layout(set = 0, binding = 0) uniform UBO {
 	// light/env parameters:
 	vec4 eyePos;				// vertex
@@ -27,9 +26,8 @@ layout(set = 0, binding = 0) uniform UBO {
 	vec4 fogDepthVector;		// vertex
 	vec4 fogEyeT;				// vertex
 	vec4 fogColor;				// fragment
-//#endif
+	vec4 texFactors;			// fragment
 };
-#endif
 
 layout(set = 1, binding = 0) uniform sampler2D texture0;
 #ifdef USE_TX1
@@ -131,6 +129,7 @@ void main() {
 #else
 	vec4 color0 = texture(texture0, frag_tex_coord0) * frag_color0;
 #endif
+	color0.rgb *= texFactors.x;
 	vec4 base;
 
 	// triple-texture with non-identity colors in color1 and color2

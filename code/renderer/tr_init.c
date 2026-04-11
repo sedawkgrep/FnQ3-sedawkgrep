@@ -68,6 +68,11 @@ cvar_t	*r_fastsky;
 cvar_t	*r_neatsky;
 cvar_t	*r_drawSun;
 cvar_t	*r_dynamiclight;
+cvar_t	*r_celShading;
+cvar_t	*r_celShadingSteps;
+cvar_t	*r_celOutline;
+cvar_t	*r_celOutlineScale;
+cvar_t	*r_celOutlineColor;
 cvar_t  *r_mergeLightmaps;
 #ifdef USE_PMLIGHT
 cvar_t	*r_dlightMode;
@@ -2259,7 +2264,7 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_overBrightBits, "Sets the intensity of overall brightness of texture pixels." );
 	r_mapOverBrightBits = ri.Cvar_Get( "r_mapOverBrightBits", "2", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_mapOverBrightBits, "Sets the number of overbright bits baked into all lightmaps and map data." );
-	r_intensity = ri.Cvar_Get( "r_intensity", "1", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	r_intensity = ri.Cvar_Get( "r_intensity", "1.25", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_intensity, "1", "255", CV_FLOAT );
 	ri.Cvar_SetDescription( r_intensity, "Global texture lighting scale." );
 	r_singleShader = ri.Cvar_Get( "r_singleShader", "0", CVAR_CHEAT | CVAR_LATCH );
@@ -2339,6 +2344,20 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_drawSun, "Draw sun shader in skies." );
 	r_dynamiclight = ri.Cvar_Get( "r_dynamiclight", "1", CVAR_ARCHIVE );
 	ri.Cvar_SetDescription( r_dynamiclight, "Enables dynamic lighting." );
+	r_celShading = ri.Cvar_Get( "r_celShading", "0", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_celShading, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_celShading, "Enable cel shading on model entities, including world models, player models, and the first-person weapon." );
+	r_celShadingSteps = ri.Cvar_Get( "r_celShadingSteps", "4", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_celShadingSteps, "2", "8", CV_INTEGER );
+	ri.Cvar_SetDescription( r_celShadingSteps, "Number of diffuse lighting bands used by cel shading. Higher values keep more intermediate tones." );
+	r_celOutline = ri.Cvar_Get( "r_celOutline", "1", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_celOutline, "0", "1", CV_INTEGER );
+	ri.Cvar_SetDescription( r_celOutline, "Draw a silhouette outline shell around cel shaded model entities. Requires a stencil buffer." );
+	r_celOutlineScale = ri.Cvar_Get( "r_celOutlineScale", "1.01", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_celOutlineScale, "1.0", "1.25", CV_FLOAT );
+	ri.Cvar_SetDescription( r_celOutlineScale, "Expansion scale used for cel-shaded model outlines. Values just above 1.0 keep the outline tight." );
+	r_celOutlineColor = ri.Cvar_Get( "r_celOutlineColor", "0 0 0 255", CVAR_ARCHIVE );
+	ri.Cvar_SetDescription( r_celOutlineColor, "Outline color for cel shaded model entities as \"r g b a\"." );
 #ifdef USE_PMLIGHT
 #if arm32 || arm64 // RPi4 GL driver have very poor ARB shaders performance...
 	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "0", CVAR_ARCHIVE );
@@ -2377,7 +2396,7 @@ static void R_Register( void )
 	r_bloom = ri.Cvar_Get( "r_bloom", "0", CVAR_ARCHIVE_ND );
 	r_bloom->flags &= ~CVAR_LATCH; // If we were running renderervk before, we need to remove latch
 	ri.Cvar_SetDescription(r_bloom, "Enables bloom post-processing effect. Requires \\r_fbo 1.");
-	r_bloom_threshold = ri.Cvar_Get( "r_bloom_threshold", "0.6", CVAR_ARCHIVE_ND );
+	r_bloom_threshold = ri.Cvar_Get( "r_bloom_threshold", "0.75", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription(r_bloom_threshold, "Color level to extract to bloom texture, default is 0.6.");
 	ri.Cvar_SetGroup( r_bloom_threshold, CVG_RENDERER );
 	r_bloom_threshold_mode = ri.Cvar_Get( "r_bloom_threshold_mode", "0", CVAR_ARCHIVE_ND );

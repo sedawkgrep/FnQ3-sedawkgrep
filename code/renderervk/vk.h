@@ -217,6 +217,7 @@ typedef struct vkUniform_s {
 	vec4_t fogDepthVector;		// vertex
 	vec4_t fogEyeT;				// vertex
 	vec4_t fogColor;			// fragment
+	vec4_t texFactors;			// fragment
 } vkUniform_t;
 
 #define TESS_XYZ   (1)

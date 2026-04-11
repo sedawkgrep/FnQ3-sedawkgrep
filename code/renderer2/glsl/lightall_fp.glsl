@@ -29,6 +29,8 @@ uniform samplerCube u_CubeMap;
 uniform vec4      u_EnableTextures; 
 #endif
 
+uniform vec4      u_TextureScale;
+
 #if defined(USE_PRIMARY_LIGHT) || defined(USE_SHADOWMAP)
 uniform vec3  u_PrimaryLightColor;
 uniform vec3  u_PrimaryLightAmbient;
@@ -37,6 +39,7 @@ uniform vec3  u_PrimaryLightAmbient;
 #if defined(USE_LIGHT) && !defined(USE_FAST_LIGHT)
 uniform vec4      u_NormalScale;
 uniform vec4      u_SpecularScale;
+uniform vec4      u_CelShadeInfo;
 #endif
 
 #if defined(USE_LIGHT) && !defined(USE_FAST_LIGHT)
@@ -221,6 +224,34 @@ float CalcLightAttenuation(float point, float normDist)
 	return attenuation;
 }
 
+float QuantizeCelLighting( float intensity )
+{
+#if defined(USE_LIGHT) && !defined(USE_FAST_LIGHT)
+	float bands = max( u_CelShadeInfo.y, 1.0 );
+
+	if ( u_CelShadeInfo.x <= 0.0 || bands <= 1.0 ) {
+		return intensity;
+	}
+
+	intensity = clamp( intensity, 0.0, 1.0 );
+
+	{
+		float scaled = intensity * bands;
+		float baseBand = floor( scaled );
+		float denom = max( bands - 1.0, 1.0 );
+		float bandValue = min( baseBand, bands - 1.0 ) / denom;
+		float nextBandValue = min( baseBand + 1.0, bands - 1.0 ) / denom;
+		float edge = fract( scaled );
+		float width = max( fwidth( scaled ), 0.0001 );
+		float blend = smoothstep( 1.0 - width, 1.0 + width, edge );
+
+		return mix( bandValue, nextBandValue, blend );
+	}
+#else
+	return intensity;
+#endif
+}
+
 #if defined(USE_BOX_CUBEMAP_PARALLAX)
 vec4 hitCube(vec3 ray, vec3 pos, vec3 invSize, float lod, samplerCube tex)
 {
@@ -289,6 +320,7 @@ void main()
 #endif
 
 	vec4 diffuse = texture2D(u_DiffuseMap, texCoords);
+	diffuse.rgb *= u_TextureScale.x;
 	
 	float alpha = diffuse.a * var_Color.a;
 	if (u_AlphaTest == 1)
@@ -373,7 +405,7 @@ void main()
 	ambientColor = var_ColorAmbient.rgb;
   #endif
 
-	NL = clamp(dot(N, L), 0.0, 1.0);
+	NL = QuantizeCelLighting( clamp(dot(N, L), 0.0, 1.0) );
 	NE = clamp(dot(N, E), 0.0, 1.0);
 	H = normalize(L + E);
 	EH = clamp(dot(E, H), 0.0, 1.0);
@@ -381,6 +413,7 @@ void main()
 
   #if defined(USE_SPECULARMAP)
 	vec4 specular = texture2D(u_SpecularMap, texCoords);
+	specular.rgb *= u_TextureScale.w;
   #else
 	vec4 specular = vec4(1.0);
   #endif
@@ -472,7 +505,7 @@ void main()
 	//sqrLightDist = dot(L2, L2);
 	//L2 /= sqrt(sqrLightDist);
 
-	NL2 = clamp(dot(N, L2), 0.0, 1.0);
+	NL2 = QuantizeCelLighting( clamp(dot(N, L2), 0.0, 1.0) );
 	H2 = normalize(L2 + E);
 	EH2 = clamp(dot(E, H2), 0.0, 1.0);
 	NH2 = clamp(dot(N, H2), 0.0, 1.0);

@@ -342,60 +342,26 @@ static void R_LightScaleTexture( byte *in, int inwidth, int inheight, qboolean o
 {
 	if ( in == NULL )
 		return;
+	int		i, c;
+	byte	*p;
 
-	if ( only_gamma )
-	{
-#ifdef USE_VULKAN
-		if ( !glConfig.deviceSupportsGamma && !vk.fboActive )
-#else
-		if ( !glConfig.deviceSupportsGamma )
-#endif
-		{
-			int		i, c;
-			byte	*p;
-
-			p = (byte *)in;
-
-			c = inwidth*inheight;
-			for (i=0 ; i<c ; i++, p+=4)
-			{
-				p[0] = s_gammatable[p[0]];
-				p[1] = s_gammatable[p[1]];
-				p[2] = s_gammatable[p[2]];
-			}
-		}
-	}
-	else
-	{
-		int		i, c;
-		byte	*p;
-
-		p = (byte *)in;
-
-		c = inwidth*inheight;
+	(void)only_gamma;
 
 #ifdef USE_VULKAN
-		if ( glConfig.deviceSupportsGamma || vk.fboActive )
+	if ( glConfig.deviceSupportsGamma || vk.fboActive )
 #else
-		if ( glConfig.deviceSupportsGamma )
+	if ( glConfig.deviceSupportsGamma )
 #endif
-		{
-			for (i=0 ; i<c ; i++, p+=4)
-			{
-				p[0] = s_intensitytable[p[0]];
-				p[1] = s_intensitytable[p[1]];
-				p[2] = s_intensitytable[p[2]];
-			}
-		}
-		else
-		{
-			for (i=0 ; i<c ; i++, p+=4)
-			{
-				p[0] = s_gammatable[s_intensitytable[p[0]]];
-				p[1] = s_gammatable[s_intensitytable[p[1]]];
-				p[2] = s_gammatable[s_intensitytable[p[2]]];
-			}
-		}
+		return;
+
+	p = (byte *)in;
+	c = inwidth * inheight;
+
+	for ( i = 0; i < c; i++, p += 4 )
+	{
+		p[0] = s_gammatable[p[0]];
+		p[1] = s_gammatable[p[1]];
+		p[2] = s_gammatable[p[2]];
 	}
 }
 
