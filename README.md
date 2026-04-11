@@ -15,7 +15,6 @@
 ## What Matters
 
 - Retail Quake III Arena compatibility comes first.
-- Demo playback should keep working, not become a casualty of cleanup.
 - Performance work should be practical, measurable, and worth keeping.
 - Windows, Linux, macOS, and ARM support all matter here.
 
