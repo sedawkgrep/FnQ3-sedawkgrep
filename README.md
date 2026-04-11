@@ -1,8 +1,6 @@
 <div align="center">
 
-# FnQuake3
-
-Fappin' Quake III, shortened to FnQuake3 or FnQ3.
+# FnQ3
 
 <p>
   <a href="BUILD.md"><img alt="Build Guide" src="https://img.shields.io/badge/Build-Guide-1f2937?style=for-the-badge"></a>
@@ -12,7 +10,7 @@ Fappin' Quake III, shortened to FnQuake3 or FnQ3.
 
 </div>
 
-FnQuake3 is a modernized Quake III Arena engine project built around a simple goal: keep retail Quake III Arena behavior and demos working, then make the engine cleaner, faster, and easier to use on modern systems.
+**FnQ3** is a modernized Quake III Arena engine project built around a simple goal: enhance the modern **Quake 3** experience whilst leaving the game code untouched.
 
 ## What Matters
 
