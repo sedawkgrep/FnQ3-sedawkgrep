@@ -380,6 +380,10 @@ ifdef MINGW
       override CC=
     endif
 
+    ifneq ($(findstring $(notdir $(strip $(CXX))),c++ g++),)
+      override CXX=
+    endif
+
     ifneq ($(findstring $(strip $(STRIP)),strip),)
       override STRIP=
     endif
@@ -399,7 +403,8 @@ ifdef MINGW
 
     ifndef CXX
       override CXX=$(firstword $(strip $(foreach MINGW_PREFIX, $(MINGW_PREFIXES), \
-         $(call bin_path, $(MINGW_PREFIX)-g++))))
+         $(call bin_path, $(MINGW_PREFIX)-g++) \
+         $(call bin_path, $(MINGW_PREFIX)-c++))))
     endif
 
     ifndef STRIP

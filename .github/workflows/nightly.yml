@@ -97,10 +97,10 @@ jobs:
         run: |
           if not exist bin mkdir bin
 
-          make release ARCH=${{ matrix.arch }} USE_SDL=0 USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1
-          copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.exe bin\
-          copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.dll bin\
-          if exist build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll copy build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll bin\
+          make release ARCH=${{ matrix.arch }} USE_SDL=0 USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1 || exit /b
+          copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.exe bin\ || exit /b
+          copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.dll bin\ || exit /b
+          if exist build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll copy build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll bin\ || exit /b
 
       - uses: actions/upload-artifact@v4
         with:
@@ -149,25 +149,26 @@ jobs:
         run: python scripts/nightly.py stamp-version --build-number ${{ needs.prepare.outputs.build_number }}
 
       - name: Build
+        shell: cmd
         run: |
-          mkdir bin
+          if not exist bin mkdir bin
 
-          msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3.ded.exe bin\fnquake3.ded${{ matrix.suffix }}.exe
-          msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
+          msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143 || exit /b
+          copy code\win32\msvc2017\output\fnquake3.ded.exe bin\fnquake3.ded${{ matrix.suffix }}.exe || exit /b
+          msbuild code\win32\msvc2017\fnquake3-ded.vcxproj -p:TargetName=fnquake3.ded,Configuration=Release,Platform=${{ matrix.platform }} -t:Clean || exit /b
 
-          msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3_opengl_${{ matrix.rend_arch }}.dll bin\
-          msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
+          msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143 || exit /b
+          copy code\win32\msvc2017\output\fnquake3_opengl_${{ matrix.rend_arch }}.dll bin\ || exit /b
+          msbuild code\win32\msvc2017\renderer.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean || exit /b
 
-          msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3_vulkan_${{ matrix.rend_arch }}.dll bin\
-          msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean
+          msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} /p:PlatformToolset=v143 || exit /b
+          copy code\win32\msvc2017\output\fnquake3_vulkan_${{ matrix.rend_arch }}.dll bin\ || exit /b
+          msbuild code\win32\msvc2017\renderervk.vcxproj -p:Configuration=Release,Platform=${{ matrix.platform }} -t:Clean || exit /b
 
-          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143
-          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3${{ matrix.suffix }}.exe
-          if exist code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll copy code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll bin\
-          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean
+          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 /p:PlatformToolset=v143 || exit /b
+          copy code\win32\msvc2017\output\fnquake3.exe bin\fnquake3${{ matrix.suffix }}.exe || exit /b
+          if exist code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll copy code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll bin\ || exit /b
+          msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean || exit /b
 
       - uses: actions/upload-artifact@v4
         with:

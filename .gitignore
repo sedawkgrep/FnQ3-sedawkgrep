@@ -7,3 +7,4 @@ cmake-*
 .idea
 __pycache__/
 *.pyc
+.tmp/
