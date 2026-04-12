@@ -25,6 +25,19 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 static void SV_CloseDownload( client_t *cl );
 
+static qboolean SV_IsPackExtension( const char *ext )
+{
+	return !Q_stricmp( ext, "pk3" ) || !Q_stricmp( ext, "pak" );
+}
+
+static void SV_StripPackExtension( const char *in, char *out, int destsize )
+{
+	Q_strncpyz( out, in, destsize );
+	if ( COM_CompareExtension( out, ".pk3" ) || COM_CompareExtension( out, ".pak" ) ) {
+		COM_StripExtension( out, out, destsize );
+	}
+}
+
 //
 // Server-side Stateless Challenges
 // backported from https://github.com/JACoders/OpenJK/pull/832
@@ -1319,6 +1332,8 @@ static int SV_WriteDownloadToClient( client_t *cl )
 	int curindex;
 	int unreferenced = 1;
 	char errorMessage[1024];
+	char referencedName[MAX_QPATH];
+	char alternateName[MAX_QPATH];
 	char pakbuf[MAX_QPATH], *pakptr;
 	int numRefPaks;
 	msg_t msg;
@@ -1335,8 +1350,8 @@ static int SV_WriteDownloadToClient( client_t *cl )
 		{
 			*pakptr = '\0';
 
-			// Check for pk3 filename extension
-			if ( !Q_stricmp( pakptr + 1, "pk3" ) )
+			// Check for pack filename extensions.
+			if ( SV_IsPackExtension( pakptr + 1 ) )
 			{
 				// Check whether the file appears in the list of referenced
 				// paks to prevent downloading of arbitrary files.
@@ -1345,7 +1360,8 @@ static int SV_WriteDownloadToClient( client_t *cl )
 
 				for(curindex = 0; curindex < numRefPaks; curindex++)
 				{
-					if(!FS_FilenameCompare(Cmd_Argv(curindex), pakbuf))
+					SV_StripPackExtension( Cmd_Argv( curindex ), referencedName, sizeof( referencedName ) );
+					if(!FS_FilenameCompare(referencedName, pakbuf))
 					{
 						unreferenced = 0;
 
@@ -1365,8 +1381,21 @@ static int SV_WriteDownloadToClient( client_t *cl )
 		// We open the file here
 		if ( !(sv_allowDownload->integer & DLF_ENABLE) ||
 			(sv_allowDownload->integer & DLF_NO_UDP) ||
-			idPack || unreferenced ||
-			( cl->downloadSize = FS_SV_FOpenFileRead( cl->downloadName, &cl->download ) ) < 0 ) {
+			idPack || unreferenced ) {
+
+			cl->downloadSize = -1;
+		} else {
+			cl->downloadSize = FS_SV_FOpenFileRead( cl->downloadName, &cl->download );
+			if ( cl->downloadSize < 0 && pakptr && SV_IsPackExtension( pakptr + 1 ) ) {
+				Com_sprintf( alternateName, sizeof( alternateName ), "%s%s",
+					pakbuf, !Q_stricmp( pakptr + 1, "pk3" ) ? ".pak" : ".pk3" );
+				cl->downloadSize = FS_SV_FOpenFileRead( alternateName, &cl->download );
+			}
+		}
+
+		if ( cl->downloadSize < 0 || !(sv_allowDownload->integer & DLF_ENABLE) ||
+			(sv_allowDownload->integer & DLF_NO_UDP) ||
+			idPack || unreferenced ) {
 
 			// cannot auto-download file
 			if(unreferenced)
@@ -1375,13 +1404,13 @@ static int SV_WriteDownloadToClient( client_t *cl )
 				Com_sprintf(errorMessage, sizeof(errorMessage), "File \"%s\" is not referenced and cannot be downloaded.", cl->downloadName);
 			}
 			else if (idPack) {
-				Com_Printf("clientDownload: %d : \"%s\" cannot download id pk3 files\n", (int) (cl - svs.clients), cl->downloadName);
+				Com_Printf("clientDownload: %d : \"%s\" cannot download official game packs\n", (int) (cl - svs.clients), cl->downloadName);
 				if (missionPack) {
 					Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload Team Arena file \"%s\"\n"
 									"The Team Arena mission pack can be found in your local game store.", cl->downloadName);
 				}
 				else {
-					Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload id pk3 file \"%s\"", cl->downloadName);
+					Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload official game pack \"%s\"", cl->downloadName);
 				}
 			}
 			else if ( !(sv_allowDownload->integer & DLF_ENABLE) ||
@@ -1724,7 +1753,7 @@ static void SV_VerifyPaks_f( client_t *cl ) {
 			cl->state = CS_ZOMBIE; // skip delta generation
 			SV_SendClientSnapshot( cl );
 			cl->state = CS_ACTIVE;
-			SV_DropClient( cl, "Unpure client detected. Invalid .PK3 files referenced!" );
+			SV_DropClient( cl, "Unpure client detected. Invalid pack files referenced!" );
 		}
 	}
 }

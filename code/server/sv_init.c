@@ -738,7 +738,7 @@ void SV_Init( void )
 	Cvar_SetDescription( sv_maxRate, "Maximum server bandwidth (in bit per second) a client can use." );
 	sv_dlRate = Cvar_Get( "sv_dlRate", "100", CVAR_ARCHIVE | CVAR_SERVERINFO );
 	Cvar_CheckRange( sv_dlRate, "0", "500", CV_INTEGER );
-	Cvar_SetDescription( sv_dlRate, "Bandwidth allotted to PK3 file downloads via UDP, in kbyte/s." );
+	Cvar_SetDescription( sv_dlRate, "Bandwidth allotted to pack archive downloads via UDP, in kbyte/s." );
 	sv_floodProtect = Cvar_Get( "sv_floodProtect", "1", CVAR_ARCHIVE | CVAR_SERVERINFO );
 	Cvar_SetDescription( sv_floodProtect, "Toggle server flood protection to keep players from bringing the server down." );
 
@@ -746,12 +746,12 @@ void SV_Init( void )
 	Cvar_Get( "sv_cheats", "1", CVAR_SYSTEMINFO | CVAR_ROM );
 	sv_serverid = Cvar_Get( "sv_serverid", "0", CVAR_SYSTEMINFO | CVAR_ROM );
 	sv_pure = Cvar_Get( "sv_pure", "1", CVAR_SYSTEMINFO | CVAR_LATCH );
-	Cvar_SetDescription( sv_pure, "Requires clients to only get data from pk3 files the server is using." );
+	Cvar_SetDescription( sv_pure, "Requires clients to only get data from pack archives the server is using." );
 	Cvar_Get( "sv_paks", "", CVAR_SYSTEMINFO | CVAR_ROM );
 	Cvar_Get( "sv_pakNames", "", CVAR_SYSTEMINFO | CVAR_ROM );
 	Cvar_Get( "sv_referencedPaks", "", CVAR_SYSTEMINFO | CVAR_ROM );
 	sv_referencedPakNames = Cvar_Get( "sv_referencedPakNames", "", CVAR_SYSTEMINFO | CVAR_ROM );
-	Cvar_SetDescription( sv_referencedPakNames, "Variable holds a list of all the pk3 files the server loaded data from." );
+	Cvar_SetDescription( sv_referencedPakNames, "Variable holds a list of all the pack archives the server loaded data from." );
 
 	// server vars
 	sv_rconPassword = Cvar_Get ("rconPassword", "", CVAR_TEMP );

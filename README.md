@@ -29,6 +29,8 @@ Fappin' and Fraggin'
 - Quick-and-simple compatibility support for **Quake Live `IBSP v47` BSPs**, including ignored advert data and `advertisement` entity fallback to `func_static`.
 - Support for the **`novlcollapse`** shader keyword used by Quake Live materials.
 - Support for **Quake Live BETA encrypted `.pk3` archives** alongside normal ZIP-based Quake 3 content packages.
+- Compatibility support for **Quake II `.pak` archives**, including archive discovery, reading, seeking, and pure/download path handling alongside standard Quake 3 packages.
+- Compatibility support for **Quake II `.wal` textures**, with automatic palette loading from `pics/colormap.pcx` during decode.
 
 ## Credits
 
@@ -36,7 +38,8 @@ Fappin' and Fraggin'
 - IBSP v43 / Quake 3 IHV map loading support is adapted from Spearmint's `bsp_q3ihv.c` implementation.
 - Legacy `.dm3` demo compatibility work was cross-checked against [WolfcamQL](https://github.com/brugal/wolfcamql).
 - Quake Live BETA encrypted PK3 support uses the XOR table published by Luigi Auriemma's **qldec** (`quakelivedec.c`).
-- Upstream [Quake3e](github.com/ec-/Quake3e) upon which this is based.
+- Quake II `.pak` / `.wal` compatibility work was cross-checked against the DarkMatter-Q2 project.
+- Upstream [Quake3e](https://github.com/ec-/Quake3e) upon which this is based.
 
 ## Quick Start
 

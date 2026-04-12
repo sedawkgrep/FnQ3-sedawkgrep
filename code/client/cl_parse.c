@@ -1021,7 +1021,7 @@ static void CL_ParseGamestate( msg_t *msg ) {
 =====================
 CL_ValidPakSignature
 
-checks for valid ZIP signature
+checks for valid ZIP or PAK signatures
 returns qtrue for normal and empty archives
 =====================
 */
@@ -1030,18 +1030,18 @@ qboolean CL_ValidPakSignature( const byte *data, int len )
 	// maybe it is not 100% correct to check for file size here
 	// because we may receive more data in future packets
 	// but situation when server sends fragmented/shortened
-	// zip header in first packet - looks pretty suspicious
-	if ( len < 22 )
-		return qfalse; // minimal ZIP file length is 22 bytes
+	// archive header in first packet - looks pretty suspicious
+	if ( len >= 22 && data[0] == 'P' && data[1] == 'K' ) {
+		if ( data[2] == 0x3 && data[3] == 0x4 )
+			return qtrue; // local file header
 
-	if ( data[0] != 'P' || data[1] != 'K' )
-		return qfalse;
+		if ( data[2] == 0x5 && data[3] == 0x6 )
+			return qtrue; // EOCD
+	}
 
-	if ( data[2] == 0x3 && data[3] == 0x4 )
-		return qtrue; // local file header
-
-	if ( data[2] == 0x5 && data[3] == 0x6 )
-		return qtrue; // EOCD
+	if ( len >= 12 && data[0] == 'P' && data[1] == 'A' && data[2] == 'C' && data[3] == 'K' ) {
+		return qtrue;
+	}
 
 	return qfalse;
 }

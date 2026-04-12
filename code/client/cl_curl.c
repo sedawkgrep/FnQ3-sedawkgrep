@@ -521,6 +521,26 @@ int replace1( const char src, const char dst, char *str )
 	return count;
 }
 
+static const char *Com_DL_GetPackExtension( const char *name )
+{
+	if ( COM_CompareExtension( name, ".pak" ) ) {
+		return ".pak";
+	}
+
+	if ( COM_CompareExtension( name, ".pk3" ) ) {
+		return ".pk3";
+	}
+
+	return NULL;
+}
+
+static void Com_DL_StripPackExtension( char *name )
+{
+	if ( !FS_StripExt( name, ".pk3" ) ) {
+		FS_StripExt( name, ".pak" );
+	}
+}
+
 
 /*
 =================
@@ -686,6 +706,7 @@ void Com_DL_Cleanup( download_t *dl )
 
 	dl->URL[0] = '\0';
 	dl->Name[0] = '\0';
+	dl->Ext[0] = '\0';
 	if ( dl->TempName[0] )
 	{
 		FS_Remove( dl->TempName );
@@ -882,14 +903,15 @@ static size_t Com_DL_HeaderCallback( void *ptr, size_t size, size_t nmemb, void 
 			*d++ = '\0';
 
 			// validate
-			if ( len < 5 || !stristr( name + len - 4, ".pk3" ) || !Com_DL_ValidFileName( name ) )
+			if ( len < 5 || Com_DL_GetPackExtension( name ) == NULL || !Com_DL_ValidFileName( name ) )
 			{
 				Com_Printf( S_COLOR_RED "Com_DL_HeaderCallback: bad file name '%s'\n", name );
 				return (size_t)-1;
 			}
 
 			// strip extension
-			FS_StripExt( name, ".pk3" );
+			Q_strncpyz( dl->Ext, Com_DL_GetPackExtension( name ), sizeof( dl->Ext ) );
+			Com_DL_StripPackExtension( name );
 
 			// store in
 			strcpy( dl->Name, name );
@@ -974,7 +996,11 @@ qboolean Com_DL_Begin( download_t *dl, const char *localName, const char *remote
 	else
 		Q_strncpyz( dl->Name, localName, sizeof( dl->Name ) );
 
-	FS_StripExt( dl->Name, ".pk3" );
+	Q_strncpyz( dl->Ext, ".pk3", sizeof( dl->Ext ) );
+	if ( Com_DL_GetPackExtension( dl->Name ) != NULL ) {
+		Q_strncpyz( dl->Ext, Com_DL_GetPackExtension( dl->Name ), sizeof( dl->Ext ) );
+		Com_DL_StripPackExtension( dl->Name );
+	}
 	if ( !dl->Name[0] )
 	{
 		Com_Printf( S_COLOR_YELLOW " empty filename after extension strip.\n" );
@@ -1040,7 +1066,7 @@ qboolean Com_DL_Begin( download_t *dl, const char *localName, const char *remote
 
 	if ( dl->mapAutoDownload )
 	{
-		Cvar_Set( "cl_downloadName", dl->Name );
+		Cvar_Set( "cl_downloadName", va( "%s%s", dl->Name, dl->Ext ) );
 		Cvar_Set( "cl_downloadSize", "0" );
 		Cvar_Set( "cl_downloadCount", "0" );
 		Cvar_SetIntegerValue( "cl_downloadTime", cls.realtime );
@@ -1090,7 +1116,7 @@ qboolean Com_DL_Perform( download_t *dl )
 	{
 		qboolean autoDownload = dl->mapAutoDownload;
 
-		Com_sprintf( name, sizeof( name ), "%s%c%s.pk3", dl->gameDir, PATH_SEP, dl->Name );
+		Com_sprintf( name, sizeof( name ), "%s%c%s%s", dl->gameDir, PATH_SEP, dl->Name, dl->Ext );
 
 		if ( !FS_SV_FileExists( name ) )
 		{
@@ -1099,7 +1125,7 @@ qboolean Com_DL_Perform( download_t *dl )
 		else
 		{
 			n = FS_GetZipChecksum( name );
-			Com_sprintf( name, sizeof( name ), "%s%c%s.%08x.pk3", dl->gameDir, PATH_SEP, dl->Name, n );
+			Com_sprintf( name, sizeof( name ), "%s%c%s.%08x%s", dl->gameDir, PATH_SEP, dl->Name, n, dl->Ext );
 
 			if ( FS_SV_FileExists( name ) )
 				FS_Remove( name );

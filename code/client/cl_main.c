@@ -2042,7 +2042,7 @@ CL_PK3List_f
 ==================
 */
 void CL_OpenedPK3List_f( void ) {
-	Com_Printf("Opened PK3 Names: %s\n", FS_LoadedPakNames());
+	Com_Printf("Opened Pack Names: %s\n", FS_LoadedPakNames());
 }
 
 
@@ -2052,7 +2052,7 @@ CL_PureList_f
 ==================
 */
 static void CL_ReferencedPK3List_f( void ) {
-	Com_Printf( "Referenced PK3 Names: %s\n", FS_ReferencedPakNames() );
+	Com_Printf( "Referenced Pack Names: %s\n", FS_ReferencedPakNames() );
 }
 
 
@@ -5281,13 +5281,15 @@ qboolean CL_Download( const char *cmd, const char *pakname, qboolean autoDownloa
 	if ( !Q_stricmp( cmd, "dlmap" ) )
 	{
 		Q_strncpyz( name, pakname, sizeof( name ) );
-		FS_StripExt( name, ".pk3" );
+		if ( !FS_StripExt( name, ".pk3" ) ) {
+			FS_StripExt( name, ".pak" );
+		}
 		if ( !name[0] )
 			return qfalse;
 		s = va( "maps/%s.bsp", name );
 		if ( FS_FileIsInPAK( s, NULL, url ) )
 		{
-			Com_Printf( S_COLOR_YELLOW " map %s already exists in %s.pk3\n", name, url );
+			Com_Printf( S_COLOR_YELLOW " map %s already exists in pack %s\n", name, url );
 			return qfalse;
 		}
 	}

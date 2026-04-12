@@ -53,6 +53,9 @@
     <ClCompile Include="..\..\renderercommon\tr_image_tga.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\renderercommon\tr_image_wal.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\renderer\tr_init.c">
       <Filter>Source Files</Filter>
     </ClCompile>

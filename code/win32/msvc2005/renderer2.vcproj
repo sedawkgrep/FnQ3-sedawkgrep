@@ -362,6 +362,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\renderercommon\tr_image_wal.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\renderer2\tr_init.c"
 				>
 			</File>

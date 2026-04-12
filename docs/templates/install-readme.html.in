@@ -80,13 +80,22 @@
     }
 
     h1 {
-      margin: 18px 0 12px;
+      margin: 18px 0 8px;
       font-size: clamp(2.2rem, 5vw, 4rem);
       line-height: 0.95;
     }
 
+    .tagline {
+      margin: 0 0 12px;
+      color: #f8fafc;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
     .subtitle {
-      max-width: 720px;
+      max-width: 760px;
       margin: 0;
       color: var(--muted);
       font-size: 1.06rem;
@@ -215,10 +224,11 @@
   <main>
     <section class="hero">
       <div class="eyebrow">${project_name_short} distribution notes</div>
-      <h1>${project_name}</h1>
+      <h1>${project_name_short}</h1>
+      <p class="tagline">Fappin' and Fraggin'</p>
       <p class="subtitle">
-        ${display_name} is a modernized Quake III Arena engine build that aims to feel at home with the original game
-        while being easier to run on current systems.
+        <strong>${project_name_short}</strong> is a modern source-port for <em>Quake III Arena</em> built around a
+        simple goal: enhance the modern Quake 3 experience whilst leaving the game code untouched.
       </p>
       <div class="buttons">
         <a class="button button-primary" href="../README.md">Project README</a>
@@ -246,46 +256,81 @@
     </section>
 
     <section class="section">
-      <h2>Before You Start</h2>
+      <h2>Features</h2>
+      <ul>
+        <li>A flexible display pipeline with renderer selection, fullscreen and windowed mode controls, internal render scaling, <strong>HDR</strong>, anti-aliasing, and detailed <strong>bloom</strong> tuning. See the <a href="../docs/DISPLAY.md">Display Guide</a>.</li>
+        <li>Configurable <strong>cel shading</strong> for model entities, including map world models, player models, and the first-person weapon, with banded lighting and optional silhouette outlines. See the <a href="../docs/DISPLAY.md">Display Guide</a>.</li>
+        <li>Optional player highlighting with <strong>rimlight</strong> and <strong>stencil border effects</strong>, per-mode team or free colors, and teammate/enemy override colors. See the <a href="../docs/VISUALS.md">Visuals Guide</a>.</li>
+        <li>Flexible 4:3-aware <strong>aspect correction</strong> for HUDs, menus, UI model widgets, and cinematics, with sensible widescreen options when you want them. See the <a href="../docs/ASPECT_CORRECTION.md">Aspect Correction Guide</a>.</li>
+        <li><strong>Enhanced console</strong> functionality, including configurable scaling, smoother scrolling, mouse interaction, text selection, drag and drop, and an optional live tab-completion popup. See the <a href="../docs/CONSOLE.md">Console Guide</a>.</li>
+        <li>An expanded <strong>screenshot system</strong> with pattern-based naming, optional view metadata sidecars, watermark compositing, and OpenGL cube-map capture. See the <a href="../docs/SCREENSHOTS.md">Screenshot Guide</a>.</li>
+        <li>CPMA/CNQ3-style <strong>rainbow text color escapes</strong>, with live preview right in the console input line.</li>
+        <li><strong>SDL3</strong> support for video, audio, and input on modern platforms.</li>
+        <li>OpenAL is the default audio backend, with device selection, <strong>spatial reverb, occlusion</strong>, and an easy fallback to the original mixer. See the <a href="../docs/AUDIO.md">Audio Guide</a>.</li>
+        <li>Compatibility support for Quake III Arena 1.17 <code>.dm3</code> demo playback alongside standard retail <code>.dm_XX</code> demo formats.</li>
+        <li>Compatibility support for older <strong>Quake 3 IHV / q3test <code>IBSP v43</code> maps</strong> alongside standard retail Quake III Arena BSP content.</li>
+        <li>Quick-and-simple compatibility support for <strong>Quake Live <code>IBSP v47</code> BSPs</strong>, including ignored advert data and <code>advertisement</code> entity fallback to <code>func_static</code>.</li>
+        <li>Support for the <strong><code>novlcollapse</code></strong> shader keyword used by Quake Live materials.</li>
+        <li>Support for <strong>Quake Live BETA encrypted <code>.pk3</code> archives</strong> alongside normal ZIP-based Quake 3 content packages.</li>
+        <li>Compatibility support for <strong>Quake II <code>.pak</code> archives</strong>, including archive discovery, reading, seeking, and pure/download path handling alongside standard Quake 3 packages.</li>
+        <li>Compatibility support for <strong>Quake II <code>.wal</code> textures</strong>, with automatic palette loading from <code>pics/colormap.pcx</code> during decode.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>Credits</h2>
+      <ul>
+        <li>CPMA/CNQ3-style rainbow text color escape support is adapted from the CPMADevs CNQ3 project.</li>
+        <li>IBSP v43 / Quake 3 IHV map loading support is adapted from Spearmint's <code>bsp_q3ihv.c</code> implementation.</li>
+        <li>Legacy <code>.dm3</code> demo compatibility work was cross-checked against <a href="https://github.com/brugal/wolfcamql">WolfcamQL</a>.</li>
+        <li>Quake Live BETA encrypted PK3 support uses the XOR table published by Luigi Auriemma's <strong>qldec</strong> (<code>quakelivedec.c</code>).</li>
+        <li>Quake II <code>.pak</code> / <code>.wal</code> compatibility work was cross-checked against the DarkMatter-Q2 project.</li>
+        <li>Upstream <a href="https://github.com/ec-/Quake3e">Quake3e</a> upon which this is based.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>Quick Start</h2>
       <ol>
-        <li>You already own the original Quake III Arena game data.</li>
-        <li>Place the engine binary beside the retail data files, or point it at an existing base path.</li>
-        <li>Keep the retail assets intact and treat this package as the engine-side layer on top.</li>
+        <li>Build the engine for your platform, or grab a packaged build if you already have one.</li>
+        <li>Put the executable next to your Quake III Arena installation and data files.</li>
+        <li>Leave your original retail game assets alone.</li>
+        <li>Use <a href="../BUILD.md">BUILD.md</a> if you need the platform-specific build steps.</li>
       </ol>
     </section>
 
     <section class="section">
       <h2>Release Channels</h2>
       <ul>
-        <li>Stable releases use semantic tags such as <code>${release_tag_example}</code>.</li>
-        <li>Nightly packages follow current mainline work and include the incremented build version, build date, and commit in the archive filename.</li>
-      </ul>
-    </section>
-
-    <section class="section">
-      <h2>Audio Backend</h2>
-      <ul>
-        <li>The default client audio path uses the OpenAL backend with spatial audio support.</li>
-        <li>Set <code>s_backend legacy</code> if you need the original Quake III mixer/device backend instead.</li>
-        <li>Use <code>s_alDevice</code> to select a specific OpenAL device, or leave it empty for the system default device.</li>
-        <li>See <a href="../docs/AUDIO.md">docs/AUDIO.md</a> for the full audio settings guide.</li>
+        <li>Tagged releases use semantic version tags such as <code>${release_tag_example}</code>.</li>
+        <li>Nightly packages follow current mainline work and include the incremented build version, build date, and commit in the archive name.</li>
       </ul>
     </section>
 
     <section class="section">
       <h2>Documentation</h2>
       <ul>
-        <li><a href="../README.md">README.md</a> is the quickest overview of what FnQuake3 is and what it focuses on.</li>
-        <li><a href="../BUILD.md">BUILD.md</a> walks through platform-specific build steps.</li>
-        <li><a href="../docs/DISPLAY.md">docs/DISPLAY.md</a> covers renderer choice, video modes, render scaling, HDR, anti-aliasing, and bloom tuning.</li>
-        <li><a href="../docs/ASPECT_CORRECTION.md">docs/ASPECT_CORRECTION.md</a> explains the HUD, menu, and cinematic presentation options.</li>
-        <li><a href="../docs/AUDIO.md">docs/AUDIO.md</a> covers backend selection, volume, music, spatial audio, and sound debugging tools.</li>
-        <li><a href="../docs/CONSOLE.md">docs/CONSOLE.md</a> covers console scaling, interaction, completion, and appearance.</li>
-        <li><a href="../docs/SCREENSHOTS.md">docs/SCREENSHOTS.md</a> covers screenshot commands, naming patterns, metadata sidecars, watermarks, and cube-map export.</li>
-        <li><a href="../docs/fnquake3/TECHNICAL.md">docs/fnquake3/TECHNICAL.md</a> covers repository layout, versioning, and release flow.</li>
+        <li><a href="../BUILD.md">Build Guide</a> if you want to compile FnQuake3 yourself.</li>
+        <li><a href="../docs/DISPLAY.md">Display Guide</a> for renderer choice, video modes, render scaling, HDR, anti-aliasing, and bloom tuning.</li>
+        <li><a href="../docs/VISUALS.md">Visuals Guide</a> for player highlighting and the current visual presentation controls.</li>
+        <li><a href="../docs/ASPECT_CORRECTION.md">Aspect Correction Guide</a> for HUD, menu, and cinematic presentation options.</li>
+        <li><a href="../docs/AUDIO.md">Audio Guide</a> for backend selection, volume, music, spatial audio, and sound debugging tools.</li>
+        <li><a href="../docs/CONSOLE.md">Console Guide</a> for console scaling, interaction, completion, and appearance.</li>
+        <li><a href="../docs/SCREENSHOTS.md">Screenshot Guide</a> for capture commands, naming patterns, view metadata sidecars, watermarks, and cube-map export.</li>
+        <li><a href="../docs/fnquake3/TECHNICAL.md">Technical Notes</a> for maintainers, release flow, and repo conventions.</li>
         <li><a href="../LICENSE">LICENSE</a> and <a href="../COPYING.txt">COPYING.txt</a> ship with the package.</li>
       </ul>
-      <p class="footer">This page is generated from the repository templates so the packaged docs stay aligned with the current build metadata.</p>
+    </section>
+
+    <section class="section">
+      <h2>Project Priorities</h2>
+      <ol>
+        <li>Full compatibility with retail Quake III Arena and its demos.</li>
+        <li>Speed and efficiency.</li>
+        <li>Enhanced modern platform support.</li>
+        <li>Cross-platform support, with other platforms considered.</li>
+      </ol>
+      <p class="footer">This page is generated from the same repository templates as <a href="../README.md">README.md</a> so the packaged docs stay aligned with the current build metadata.</p>
     </section>
   </main>
 </body>
