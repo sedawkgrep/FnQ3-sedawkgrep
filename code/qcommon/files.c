@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "q_shared.h"
 #include "qcommon.h"
 #include "unzip.h"
+#include "quakelive_pk3_xor.h"
 
 /*
 =============================================================================
@@ -228,6 +229,9 @@ static const unsigned pak_checksums[] = {
 #define MAX_ZPATH			256
 #define MAX_FILEHASH_SIZE	4096
 
+#define FNQ3_ROOT_ARCHIVE_NAME			"FnQuake3-pkg.fnz"
+#define FNQ3_ROOT_ARCHIVE_HUD_SCRIPT	"fnq3-hud.json"
+
 typedef struct fileInPack_s {
 	char					*name;		// name of the file
 	unsigned long			pos;		// file info position in zip
@@ -238,6 +242,7 @@ typedef struct fileInPack_s {
 typedef struct pack_s {
 	char			*pakFilename;				// c:\quake3\baseq3\pak0.pk3
 	char			*pakBasename;				// pak0
+	char			*readFilename;				// zip path actually opened by unzip
 	const char		*pakGamename;				// baseq3
 	unzFile			handle;						// handle to zip file
 	int				checksum;					// regular checksum
@@ -245,6 +250,7 @@ typedef struct pack_s {
 	int				numfiles;					// number of files in pk3
 	int				referenced;					// referenced file flags
 	qboolean		exclude;					// found in \fs_excludeReference list
+	qboolean		quakeliveEncrypted;
 	int				hashSize;					// hash table size (power of 2)
 	fileInPack_t*	*hashTable;					// hash table
 	fileInPack_t*	buildBuffer;				// buffer with the filenames etc.
@@ -325,6 +331,10 @@ static	int			fs_packCount;			// total number of packs in searchpath
 static	int			fs_dirCount;			// total number of directories in searchpath
 
 static	int			fs_checksumFeed;
+static	unsigned int	fs_quakeLivePk3TempCounter;
+
+static qboolean FS_IsQuakeLiveEncryptedZipFile( const char *zipfile );
+static char *FS_CreateQuakeLiveDecryptedZipFile( const char *zipfile );
 
 typedef union qfile_gus {
 	FILE*		o;
@@ -1487,7 +1497,7 @@ static int FS_OpenFileInPak( fileHandle_t *file, pack_t *pak, fileInPack_t *pakF
 	}
 
 	if ( !pak->handle ) {
-		pak->handle = unzOpen( pak->pakFilename );
+		pak->handle = unzOpen( pak->readFilename ? pak->readFilename : pak->pakFilename );
 		if ( !pak->handle ) {
 			Com_Printf( S_COLOR_RED "Error opening %s@%s\n", pak->pakBasename, pakFile->name );
 			*file = FS_INVALID_HANDLE;
@@ -1497,9 +1507,9 @@ static int FS_OpenFileInPak( fileHandle_t *file, pack_t *pak, fileInPack_t *pakF
 
 	if ( uniqueFILE ) {
 		// open a new file on the pakfile
-		temp = unzReOpen( pak->pakFilename, pak->handle );
+		temp = unzReOpen( pak->readFilename ? pak->readFilename : pak->pakFilename, pak->handle );
 		if ( temp == NULL ) {
-			Com_Printf( S_COLOR_RED "Couldn't reopen %s", pak->pakFilename );
+			Com_Printf( S_COLOR_RED "Couldn't reopen %s", pak->readFilename ? pak->readFilename : pak->pakFilename );
 			*file = FS_INVALID_HANDLE;
 			return -1;
 		}
@@ -2084,6 +2094,136 @@ qboolean FS_FileIsInPAK( const char *filename, int *pChecksum, char *pakName ) {
 }
 
 
+static qboolean FS_RootArchiveAllowsFile( const char *qpath )
+{
+	return qpath != NULL && !FS_FilenameCompare( qpath, FNQ3_ROOT_ARCHIVE_HUD_SCRIPT );
+}
+
+
+static const char *FS_RootArchiveBasePath( void )
+{
+#ifdef __APPLE__
+	const char *path = Sys_DefaultAppPath();
+	if ( path != NULL && path[ 0 ] != '\0' ) {
+		return path;
+	}
+#endif
+
+	return Sys_Pwd();
+}
+
+
+/*
+=================
+FS_ReadFileFromRootArchive
+
+Read compatibility-safe source-port assets from a fixed archive next to the executable.
+Currently restricted to HUD alignment scripts so it doesn't widen the general data search path.
+=================
+*/
+static int FS_ReadFileFromRootArchive( const char *qpath, void **buffer )
+{
+	const char *basePath;
+	const char *archivePath;
+	unzFile archive;
+	unz_file_info fileInfo;
+	byte *buf;
+	int err;
+	int len;
+	int total;
+
+	if ( !FS_RootArchiveAllowsFile( qpath ) ) {
+		return -1;
+	}
+
+	basePath = FS_RootArchiveBasePath();
+	if ( basePath == NULL || basePath[ 0 ] == '\0' ) {
+		return -1;
+	}
+
+	archivePath = FS_BuildOSPath( basePath, FNQ3_ROOT_ARCHIVE_NAME, NULL );
+	archive = unzOpen( archivePath );
+	if ( archive == NULL ) {
+		return -1;
+	}
+
+	err = unzLocateFile( archive, qpath, 2 );
+	if ( err != UNZ_OK ) {
+		unzClose( archive );
+		return -1;
+	}
+
+	err = unzGetCurrentFileInfo( archive, &fileInfo, NULL, 0, NULL, 0, NULL, 0 );
+	if ( err != UNZ_OK ) {
+		unzClose( archive );
+		return -1;
+	}
+
+	if ( fileInfo.compression_method != 0 && fileInfo.compression_method != 8 /* Z_DEFLATED */ ) {
+		Com_Printf( S_COLOR_YELLOW "%s|%s: unsupported compression method %i\n",
+			FNQ3_ROOT_ARCHIVE_NAME, qpath, (int) fileInfo.compression_method );
+		unzClose( archive );
+		return -1;
+	}
+
+	if ( fileInfo.uncompressed_size > 0x7fffffffUL ) {
+		unzClose( archive );
+		return -1;
+	}
+
+	len = (int) fileInfo.uncompressed_size;
+	if ( buffer == NULL ) {
+		unzClose( archive );
+		return len;
+	}
+
+	err = unzOpenCurrentFile( archive );
+	if ( err != UNZ_OK ) {
+		unzClose( archive );
+		*buffer = NULL;
+		return -1;
+	}
+
+	buf = Hunk_AllocateTempMemory( len + 1 );
+	*buffer = buf;
+	total = 0;
+
+	while ( total < len ) {
+		err = unzReadCurrentFile( archive, buf + total, len - total );
+		if ( err < 0 ) {
+			unzCloseCurrentFile( archive );
+			unzClose( archive );
+			Hunk_FreeTempMemory( buf );
+			*buffer = NULL;
+			return -1;
+		}
+		if ( err == 0 ) {
+			break;
+		}
+		total += err;
+	}
+
+	err = unzCloseCurrentFile( archive );
+	unzClose( archive );
+
+	if ( total != len || err != UNZ_OK ) {
+		Hunk_FreeTempMemory( buf );
+		*buffer = NULL;
+		return -1;
+	}
+
+	buf[ len ] = '\0';
+	fs_loadCount++;
+	fs_loadStack++;
+
+	if ( fs_debug->integer ) {
+		Com_Printf( "FS_ReadFile: %s (found in '%s')\n", qpath, archivePath );
+	}
+
+	return len;
+}
+
+
 /*
 ============
 FS_ReadFile
@@ -2156,6 +2296,11 @@ int FS_ReadFile( const char *qpath, void **buffer ) {
 	// look for it in the filesystem or pack files
 	len = FS_FOpenFileRead( qpath, &h, qfalse );
 	if ( h == FS_INVALID_HANDLE ) {
+		len = FS_ReadFileFromRootArchive( qpath, buffer );
+		if ( len >= 0 ) {
+			return len;
+		}
+
 		if ( buffer ) {
 			*buffer = NULL;
 		}
@@ -2310,6 +2455,119 @@ static void FS_ConvertFilename( char *name )
 }
 
 
+static qboolean FS_IsQuakeLiveEncryptedZipFile( const char *zipfile )
+{
+	FILE *f;
+	byte head[ 4 ];
+	int i;
+
+	if ( FS_QUAKELIVE_PK3_XOR_LEN < 4 ) {
+		return qfalse;
+	}
+
+	f = Sys_FOpen( zipfile, "rb" );
+	if ( f == NULL ) {
+		return qfalse;
+	}
+
+	if ( fread( head, sizeof( head ), 1, f ) != 1 ) {
+		fclose( f );
+		return qfalse;
+	}
+
+	fclose( f );
+
+	for ( i = 0; i < 4; i++ ) {
+		head[ i ] ^= (byte)fs_quakeLivePk3Xor[ i ];
+	}
+
+	if ( head[ 0 ] != 'P' || head[ 1 ] != 'K' ) {
+		return qfalse;
+	}
+
+	if ( ( head[ 2 ] == 0x03 && head[ 3 ] == 0x04 ) ||
+		( head[ 2 ] == 0x05 && head[ 3 ] == 0x06 ) ||
+		( head[ 2 ] == 0x07 && head[ 3 ] == 0x08 ) ) {
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+
+static char *FS_CreateQuakeLiveDecryptedZipFile( const char *zipfile )
+{
+	static const int bufferSize = 1 << 16;
+	FILE *in;
+	FILE *out;
+	byte buffer[ 1 << 16 ];
+	const char *basePath;
+	char tempName[ MAX_OSPATH ];
+	char *outPath;
+	size_t readLen;
+	int streamPos;
+	int i;
+
+	basePath = ( fs_homepath && fs_homepath->string[ 0 ] ) ? fs_homepath->string : Sys_Pwd();
+	if ( basePath == NULL || basePath[ 0 ] == '\0' ) {
+		return NULL;
+	}
+
+	Com_sprintf( tempName, sizeof( tempName ), "quakelive-pk3/%08x_%u.pk3",
+		FS_HashFileName( zipfile, 0U ), fs_quakeLivePk3TempCounter++ );
+
+	outPath = Z_TagMalloc( MAX_OSPATH * 3 + 1, TAG_GENERAL );
+	Q_strncpyz( outPath, FS_BuildOSPath( basePath, ".tmp", tempName ), MAX_OSPATH * 3 + 1 );
+
+	if ( FS_CreatePath( outPath ) ) {
+		Z_Free( outPath );
+		return NULL;
+	}
+
+	in = Sys_FOpen( zipfile, "rb" );
+	if ( in == NULL ) {
+		Z_Free( outPath );
+		return NULL;
+	}
+
+	out = Sys_FOpen( outPath, "wb" );
+	if ( out == NULL ) {
+		fclose( in );
+		Z_Free( outPath );
+		return NULL;
+	}
+
+	streamPos = 0;
+	while ( ( readLen = fread( buffer, 1, bufferSize, in ) ) > 0 ) {
+		for ( i = 0; i < (int)readLen; i++ ) {
+			buffer[ i ] ^= (byte)fs_quakeLivePk3Xor[ ( streamPos + i ) % FS_QUAKELIVE_PK3_XOR_LEN ];
+		}
+
+		if ( fwrite( buffer, 1, readLen, out ) != readLen ) {
+			fclose( out );
+			fclose( in );
+			remove( outPath );
+			Z_Free( outPath );
+			return NULL;
+		}
+
+		streamPos += (int)readLen;
+	}
+
+	fclose( out );
+
+	if ( ferror( in ) ) {
+		fclose( in );
+		remove( outPath );
+		Z_Free( outPath );
+		return NULL;
+	}
+
+	fclose( in );
+	return outPath;
+}
+
+
 #ifdef USE_PK3_CACHE
 
 #define PK3_HASH_SIZE 512
@@ -2460,6 +2718,7 @@ static pack_t *FS_LoadCachedPK3( const char *zipfile )
 		return NULL;
 	}
 
+	pak->readFilename = pak->pakFilename;
 	return pak;
 }
 
@@ -2872,7 +3131,7 @@ static qboolean FS_SaveCache( void )
 
 	while ( sp != NULL )
 	{
-		if ( sp->pack )
+		if ( sp->pack && !sp->pack->quakeliveEncrypted )
 		{
 			FS_SavePackToFile( sp->pack, f );
 		}
@@ -2966,6 +3225,11 @@ static pack_t *FS_LoadZipFile( const char *zipfile )
 	const char		*basename;
 	int				fileNameLen;
 	int				baseNameLen;
+	char			*readFilename;
+	qboolean		encrypted;
+
+	readFilename = NULL;
+	encrypted = FS_IsQuakeLiveEncryptedZipFile( zipfile );
 
 #ifdef USE_PK3_CACHE
 	pack = FS_LoadCachedPK3( zipfile );
@@ -2996,10 +3260,32 @@ static pack_t *FS_LoadZipFile( const char *zipfile )
 	fileNameLen = (int) strlen( zipfile ) + 1;
 	baseNameLen = (int) strlen( basename ) + 1;
 
-	uf = unzOpen( zipfile );
+	if ( encrypted ) {
+		readFilename = FS_CreateQuakeLiveDecryptedZipFile( zipfile );
+		if ( readFilename == NULL ) {
+			return NULL;
+		}
+		uf = unzOpen( readFilename );
+	} else {
+		uf = unzOpen( zipfile );
+	}
+	if ( uf == NULL ) {
+		if ( readFilename != NULL ) {
+			remove( readFilename );
+			Z_Free( readFilename );
+		}
+		return NULL;
+	}
 	err = unzGetGlobalInfo( uf, &gi );
 
 	if ( err != UNZ_OK ) {
+		if ( uf != NULL ) {
+			unzClose( uf );
+		}
+		if ( readFilename != NULL ) {
+			remove( readFilename );
+			Z_Free( readFilename );
+		}
 		return NULL;
 	}
 
@@ -3025,6 +3311,10 @@ static pack_t *FS_LoadZipFile( const char *zipfile )
 
 	if ( filecount == 0 ) {
 		unzClose( uf );
+		if ( readFilename != NULL ) {
+			remove( readFilename );
+			Z_Free( readFilename );
+		}
 		return NULL;
 	}
 
@@ -3044,6 +3334,7 @@ static pack_t *FS_LoadZipFile( const char *zipfile )
 
 	pack->handle = uf;
 	pack->numfiles = filecount;
+	pack->quakeliveEncrypted = encrypted;
 	pack->hashSize = hashSize;
 	pack->hashTable = (fileInPack_t **)( pack + 1 );
 
@@ -3052,6 +3343,7 @@ static pack_t *FS_LoadZipFile( const char *zipfile )
 
 	pack->pakFilename = (char*)( namePtr + namelen );
 	pack->pakBasename = (char*)( pack->pakFilename + PAD( fileNameLen, sizeof( int ) ) );
+	pack->readFilename = readFilename ? readFilename : pack->pakFilename;
 
 #ifdef USE_PK3_CACHE
 	fs_headerLongs = (int*)( pack->pakBasename + PAD( baseNameLen, sizeof( int ) ) );
@@ -3158,6 +3450,13 @@ static void FS_FreePak( pack_t *pak )
 #endif
 		unzClose( pak->handle );
 		pak->handle = NULL;
+	}
+
+	if ( pak->readFilename && pak->readFilename != pak->pakFilename )
+	{
+		remove( pak->readFilename );
+		Z_Free( pak->readFilename );
+		pak->readFilename = NULL;
 	}
 
 	Z_Free( pak );

@@ -468,10 +468,82 @@ static void CMod_LoadBrushSides( const lump_t *l )
 CMod_LoadEntityString
 =================
 */
+static int CMod_CopyRewrittenEntityString( const char *src, const int srcLen, char *dst ) {
+	static const char keyname[] = "classname";
+	static const char advert[] = "advertisement";
+	static const char replacement[] = "func_static";
+	const char *srcEnd;
+	int outLen;
+	qboolean awaitingValue;
+	char currentKey[MAX_KEY];
+
+	srcEnd = src + srcLen;
+	outLen = 0;
+	awaitingValue = qfalse;
+	currentKey[0] = '\0';
+
+	while ( src < srcEnd && *src ) {
+		const char c = *src++;
+
+		if ( c == '{' || c == '}' ) {
+			awaitingValue = qfalse;
+			currentKey[0] = '\0';
+			dst[ outLen++ ] = c;
+			continue;
+		}
+
+		if ( c != '"' ) {
+			dst[ outLen++ ] = c;
+			continue;
+		}
+
+		dst[ outLen++ ] = c;
+
+		{
+			const char *tokenStart = src;
+			int tokenLen = 0;
+
+			while ( src < srcEnd && *src && *src != '"' ) {
+				src++;
+			}
+
+			tokenLen = (int)( src - tokenStart );
+
+			if ( awaitingValue &&
+				!Q_stricmp( currentKey, keyname ) &&
+				tokenLen == (int)strlen( advert ) &&
+				!Q_stricmpn( tokenStart, advert, tokenLen ) ) {
+				Com_Memcpy( dst + outLen, replacement, sizeof( replacement ) - 1 );
+				outLen += (int)sizeof( replacement ) - 1;
+			} else {
+				Com_Memcpy( dst + outLen, tokenStart, tokenLen );
+				outLen += tokenLen;
+			}
+
+			if ( src < srcEnd && *src == '"' ) {
+				dst[ outLen++ ] = *src++;
+			}
+
+			if ( awaitingValue ) {
+				awaitingValue = qfalse;
+				currentKey[0] = '\0';
+			} else {
+				const int copyLen = tokenLen >= (int)sizeof( currentKey ) ? (int)sizeof( currentKey ) - 1 : tokenLen;
+
+				Com_Memcpy( currentKey, tokenStart, copyLen );
+				currentKey[ copyLen ] = '\0';
+				awaitingValue = qtrue;
+			}
+		}
+	}
+
+	dst[ outLen ] = '\0';
+	return outLen;
+}
+
 static void CMod_LoadEntityString( const lump_t *l ) {
-	cm.entityString = Hunk_Alloc( l->filelen, h_high );
-	cm.numEntityChars = l->filelen;
-	Com_Memcpy( cm.entityString, cmod_base + l->fileofs, l->filelen );
+	cm.entityString = Hunk_Alloc( l->filelen + 1, h_high );
+	cm.numEntityChars = CMod_CopyRewrittenEntityString( (const char *)( cmod_base + l->fileofs ), l->filelen, cm.entityString );
 }
 
 
@@ -697,8 +769,9 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 		( (int32_t *)&header )[i] = LittleLong( ( (int32_t *)&header )[i] );
 	}
 
-	if ( header.version != BSP_VERSION ) {
-		Com_Error( ERR_DROP, "%s: %s has wrong version number (%i should be %i)", __func__, name, header.version, BSP_VERSION );
+	if ( header.version != BSP_VERSION && header.version != BSP_VERSION_QL ) {
+		Com_Error( ERR_DROP, "%s: %s has wrong version number (%i should be %i or %i)",
+			__func__, name, header.version, BSP_VERSION, BSP_VERSION_QL );
 	}
 
 	for ( i = 0; i < HEADER_LUMPS; i++ ) {

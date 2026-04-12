@@ -308,6 +308,7 @@ typedef struct {
 
 #define BSP_VERSION_IHV		43
 #define BSP_VERSION			46
+#define BSP_VERSION_QL		47
 
 
 // there shouldn't be any problem with increasing these values at the

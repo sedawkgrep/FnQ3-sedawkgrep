@@ -17,7 +17,8 @@ These settings are split by subsystem, so you can correct the HUD, menus, and ci
 
 When `cl_hudAspect 1` is enabled, FnQuake3 starts from a centered 4:3 HUD layout. If a `fnq3-hud.json` file exists, the engine can then use your rules to realign specific elements or push selected pieces back to stretch mode.
 
-- The script is read from the active game filesystem location.
+- The script is read from the active game filesystem location first.
+- If no active-game copy is found, FnQuake3 also checks `FnQuake3-pkg.fnz` next to the executable for `fnq3-hud.json`. The archive is just a renamed `.zip` file.
 - `hud_reload` reparses `fnq3-hud.json` without restarting the game.
 - Missing or invalid scripts fall back to centered uniform HUD placement.
 - HUD `refdef` viewports use the same rect transform path as HUD quads, so score heads and other 3D HUD widgets stay aligned with the corrected HUD layout.

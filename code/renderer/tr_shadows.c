@@ -340,6 +340,8 @@ void RB_EnemyOutlineTessEnd( void ) {
 	GL_Cull( CT_BACK_SIDED );
 	GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
 	R_EnemyHighlightColor( &backEnd.currentEntity->e.shader );
+	GL_ClientState( 0, CLS_COLOR_ARRAY );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors[0].rgba );
 	R_DrawElements( tess.numIndexes, tess.indexes );
 
 	R_EnemyHighlightRestore( originalXYZ );
@@ -349,6 +351,7 @@ void RB_EnemyOutlineTessEnd( void ) {
 	qglStencilOp( GL_KEEP, GL_KEEP, GL_ZERO );
 	GL_Cull( CT_FRONT_SIDED );
 	GL_State( GLS_DEPTHFUNC_EQUAL | GLS_SRCBLEND_ZERO | GLS_DSTBLEND_ONE );
+	GL_ClientState( 0, CLS_NONE );
 	R_DrawElements( tess.numIndexes, tess.indexes );
 
 	qglColorMask( rgba[0], rgba[1], rgba[2], rgba[3] );

@@ -285,6 +285,10 @@ static void R_BindOutlineResources( const color4ub_t *color ) {
 	uniform.ent.color[0][1] = color->rgba[1] / 255.0f;
 	uniform.ent.color[0][2] = color->rgba[2] / 255.0f;
 	uniform.ent.color[0][3] = color->rgba[3] / 255.0f;
+	uniform.texFactors[0] = 1.0f;
+	uniform.texFactors[1] = 1.0f;
+	uniform.texFactors[2] = 1.0f;
+	uniform.texFactors[3] = 1.0f;
 
 	R_EnemyHighlightBindTexture();
 	VK_PushUniform( &uniform );

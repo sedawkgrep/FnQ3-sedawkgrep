@@ -163,6 +163,61 @@ static vec_t QuatNormalize2( const quat_t v, quat_t out) {
 	return length;
 }
 
+static void R_GenerateIQMTangents( iqmData_t *iqmData ) {
+	vec3_t *sdirs;
+	vec3_t *tdirs;
+	int i;
+
+	if ( !iqmData->tangents || iqmData->num_vertexes <= 0 ) {
+		return;
+	}
+
+	sdirs = ri.Malloc( sizeof( *sdirs ) * iqmData->num_vertexes );
+	tdirs = ri.Malloc( sizeof( *tdirs ) * iqmData->num_vertexes );
+
+	for ( i = 0; i < iqmData->num_vertexes; i++ ) {
+		VectorClear( sdirs[i] );
+		VectorClear( tdirs[i] );
+	}
+
+	for ( i = 0; i < iqmData->num_triangles; i++ ) {
+		const int *tri = &iqmData->triangles[i * 3];
+		vec3_t sdir, tdir;
+
+		R_CalcTexDirs( sdir, tdir,
+			&iqmData->positions[tri[0] * 3],
+			&iqmData->positions[tri[1] * 3],
+			&iqmData->positions[tri[2] * 3],
+			&iqmData->texcoords[tri[0] * 2],
+			&iqmData->texcoords[tri[1] * 2],
+			&iqmData->texcoords[tri[2] * 2] );
+
+		VectorAdd( sdirs[tri[0]], sdir, sdirs[tri[0]] );
+		VectorAdd( sdirs[tri[1]], sdir, sdirs[tri[1]] );
+		VectorAdd( sdirs[tri[2]], sdir, sdirs[tri[2]] );
+		VectorAdd( tdirs[tri[0]], tdir, tdirs[tri[0]] );
+		VectorAdd( tdirs[tri[1]], tdir, tdirs[tri[1]] );
+		VectorAdd( tdirs[tri[2]], tdir, tdirs[tri[2]] );
+	}
+
+	for ( i = 0; i < iqmData->num_vertexes; i++ ) {
+		const float *normal = &iqmData->normals[i * 3];
+		vec4_t tangent;
+
+		VectorNormalize( sdirs[i] );
+		VectorNormalize( tdirs[i] );
+
+		tangent[3] = R_CalcTangentSpace( tangent, NULL, normal, sdirs[i], tdirs[i] );
+		iqmData->tangents[i * 4 + 0] = tangent[0];
+		iqmData->tangents[i * 4 + 1] = tangent[1];
+		iqmData->tangents[i * 4 + 2] = tangent[2];
+		iqmData->tangents[i * 4 + 3] = tangent[3];
+	}
+
+	ri.Free( tdirs );
+	ri.Free( sdirs );
+}
+
 /*
 =================
 R_LoadIQM
@@ -190,11 +245,14 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
 	char			meshName[MAX_QPATH];
 	int				vertexArrayFormat[IQM_COLOR+1];
 	int				allocateInfluences;
+	qboolean			generateTangents;
 	byte *blendIndexes;
 	union {
 		byte *b;
 		float *f;
 	} blendWeights;
+
+	generateTangents = qfalse;
 
 	if( filesize < sizeof(iqmHeader_t) ) {
 		return qfalse;
@@ -376,10 +434,9 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
 			vertexArrayFormat[IQM_BLENDWEIGHTS] = -1;
 		}
 
-		// opengl2 renderer requires tangents
 		if( vertexArrayFormat[IQM_TANGENT] == -1 ) {
-			ri.Printf( PRINT_WARNING, "R_LoadIQM: %s is missing IQM_TANGENT array.\n", mod_name );
-			return qfalse;
+			generateTangents = qtrue;
+			ri.Printf( PRINT_DEVELOPER, "R_LoadIQM: %s is missing IQM_TANGENT array, generating tangents.\n", mod_name );
 		}
 
 		// check and swap triangles
@@ -582,7 +639,7 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
 		size += header->num_vertexes * 2 * sizeof(float);	// texcoords
 		size += header->num_vertexes * 3 * sizeof(float);	// normals
 
-		if ( vertexArrayFormat[IQM_TANGENT] != -1 ) {
+		if ( vertexArrayFormat[IQM_TANGENT] != -1 || generateTangents ) {
 			size += header->num_vertexes * 4 * sizeof(float);	// tangents
 		}
 
@@ -646,7 +703,7 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
 		iqmData->normals = (float*)dataPtr;
 		dataPtr += header->num_vertexes * 3 * sizeof(float);	// normals
 
-		if ( vertexArrayFormat[IQM_TANGENT] != -1 ) {
+		if ( vertexArrayFormat[IQM_TANGENT] != -1 || generateTangents ) {
 			iqmData->tangents = (float*)dataPtr;
 			dataPtr += header->num_vertexes * 4 * sizeof(float);	// tangents
 		}
@@ -769,6 +826,10 @@ qboolean R_LoadIQM( model_t *mod, void *buffer, int filesize, const char *mod_na
 					    n * sizeof(byte) );
 				break;
 			}
+		}
+
+		if ( generateTangents ) {
+			R_GenerateIQMTangents( iqmData );
 		}
 
 		// find unique blend influences per mesh
@@ -1243,24 +1304,29 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 	personalModel = (ent->e.renderfx & RF_THIRD_PERSON) && !(tr.viewParms.isPortal
 	                 || (tr.viewParms.flags & (VPF_SHADOWMAP | VPF_DEPTHSHADOW)));
 
-	if ( ent->e.renderfx & RF_WRAP_FRAMES ) {
-		ent->e.frame %= data->num_frames;
-		ent->e.oldframe %= data->num_frames;
-	}
+	if ( data->num_frames > 0 ) {
+		if ( ent->e.renderfx & RF_WRAP_FRAMES ) {
+			ent->e.frame %= data->num_frames;
+			ent->e.oldframe %= data->num_frames;
+		}
 
-	//
-	// Validate the frames so there is no chance of a crash.
-	// This will write directly into the entity structure, so
-	// when the surfaces are rendered, they don't need to be
-	// range checked again.
-	//
-	if ( (ent->e.frame >= data->num_frames) 
-	     || (ent->e.frame < 0)
-	     || (ent->e.oldframe >= data->num_frames)
-	     || (ent->e.oldframe < 0) ) {
-		ri.Printf( PRINT_DEVELOPER, "R_AddIQMSurfaces: no such frame %d to %d for '%s'\n",
-			   ent->e.oldframe, ent->e.frame,
-			   tr.currentModel->name );
+		//
+		// Validate the frames so there is no chance of a crash.
+		// This will write directly into the entity structure, so
+		// when the surfaces are rendered, they don't need to be
+		// range checked again.
+		//
+		if ( (ent->e.frame >= data->num_frames)
+		     || (ent->e.frame < 0)
+		     || (ent->e.oldframe >= data->num_frames)
+		     || (ent->e.oldframe < 0) ) {
+			ri.Printf( PRINT_DEVELOPER, "R_AddIQMSurfaces: no such frame %d to %d for '%s'\n",
+				   ent->e.oldframe, ent->e.frame,
+				   tr.currentModel->name );
+			ent->e.frame = 0;
+			ent->e.oldframe = 0;
+		}
+	} else {
 		ent->e.frame = 0;
 		ent->e.oldframe = 0;
 	}

@@ -26,12 +26,16 @@ Fappin' and Fraggin'
 - OpenAL is the default audio backend, with device selection, **spatial reverb, occlusion**, and an easy fallback to the original mixer. See the [Audio guide](docs/AUDIO.md).
 - Compatibility support for Quake III Arena 1.17 **`.dm3` demo playback** alongside standard retail `.dm_XX` demo formats.
 - Compatibility support for older **Quake 3 IHV / q3test `IBSP v43` maps** alongside standard retail Quake III Arena BSP content.
+- Quick-and-simple compatibility support for **Quake Live `IBSP v47` BSPs**, including ignored advert data and `advertisement` entity fallback to `func_static`.
+- Support for the **`novlcollapse`** shader keyword used by Quake Live materials.
+- Support for **Quake Live BETA encrypted `.pk3` archives** alongside normal ZIP-based Quake 3 content packages.
 
 ## Credits
 
 - CPMA/CNQ3-style rainbow text color escape support is adapted from the CPMADevs CNQ3 project.
 - IBSP v43 / Quake 3 IHV map loading support is adapted from Spearmint's `bsp_q3ihv.c` implementation.
 - Legacy `.dm3` demo compatibility work was cross-checked against [WolfcamQL](https://github.com/brugal/wolfcamql).
+- Quake Live BETA encrypted PK3 support uses the XOR table published by Luigi Auriemma's **qldec** (`quakelivedec.c`).
 - Upstream [Quake3e](github.com/ec-/Quake3e) upon which this is based.
 
 ## Quick Start
