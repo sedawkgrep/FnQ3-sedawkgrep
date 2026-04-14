@@ -229,6 +229,11 @@ typedef struct client_s {
 	char			tld[3]; // "XX\0"
 	const char		*country;
 
+	fileHandle_t	demoRecordFile;
+	char			demoRecordName[MAX_OSPATH]; // without extension
+	qboolean		demoRecordHasSnapshot;
+	int				demoRecordServerId;
+
 } client_t;
 
 //=============================================================================
@@ -308,6 +313,7 @@ extern	cvar_t	*sv_gametype;
 extern	cvar_t	*sv_pure;
 extern	cvar_t	*sv_floodProtect;
 extern	cvar_t	*sv_lanForceRate;
+extern	cvar_t	*sv_autoRecordDemos;
 
 extern	cvar_t *sv_levelTimeReset;
 extern	cvar_t *sv_filter;
@@ -367,6 +373,9 @@ void SV_UserinfoChanged( client_t *cl, qboolean updateUserinfo, qboolean runFilt
 void SV_ClientEnterWorld( client_t *client );
 void SV_FreeClient( client_t *client );
 void SV_DropClient( client_t *drop, const char *reason );
+void SV_StartDemoRecord( client_t *client );
+void SV_StopDemoRecord( client_t *client, qboolean discard );
+void SV_RecordDemoMessage( client_t *client, const msg_t *msg );
 
 qboolean SV_ExecuteClientCommand( client_t *cl, const char *s );
 void SV_ClientThink( client_t *cl, usercmd_t *cmd );

@@ -793,6 +793,8 @@ void SV_Init( void )
 	Cvar_SetDescription( sv_mapChecksum, "Allows check for client server map to match." );
 	sv_lanForceRate = Cvar_Get( "sv_lanForceRate", "1", CVAR_ARCHIVE_ND );
 	Cvar_SetDescription( sv_lanForceRate, "Forces LAN clients to the maximum rate instead of accepting client setting." );
+	sv_autoRecordDemos = Cvar_Get( "sv_autoRecordDemos", "0", CVAR_ARCHIVE_ND );
+	Cvar_SetDescription( sv_autoRecordDemos, "Automatically records a server-side demo for each human client after a gamestate is sent." );
 
 #ifdef USE_BANS
 	sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
@@ -821,6 +823,7 @@ void SV_Init( void )
 	Cvar_SetGroup( sv_minRate, CVG_SERVER );
 	Cvar_SetGroup( sv_maxRate, CVG_SERVER );
 	Cvar_SetGroup( sv_fps, CVG_SERVER );
+	Cvar_SetGroup( sv_autoRecordDemos, CVG_SERVER );
 
 	// force initial check
 	SV_TrackCvarChanges();

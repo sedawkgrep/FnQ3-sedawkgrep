@@ -470,6 +470,327 @@ void SV_PrintClientStateChange( const client_t *cl, clientState_t newState ) {
 }
 
 
+static int SV_DemoProtocol( void )
+{
+	if ( com_protocol->integer != DEFAULT_PROTOCOL_VERSION ) {
+		return com_protocol->integer;
+	}
+
+	return NEW_PROTOCOL_VERSION;
+}
+
+
+static void SV_SanitizeDemoToken( char *out, int outSize, const char *in )
+{
+	int i, j;
+	byte c;
+	qboolean allowed;
+	qboolean lastUnderscore = qfalse;
+	char clean[ MAX_OSPATH ];
+
+	if ( outSize < 1 ) {
+		return;
+	}
+
+	if ( !in ) {
+		in = "";
+	}
+
+	Q_strncpyz( clean, in, sizeof( clean ) );
+	Q_CleanStr( clean );
+
+	j = 0;
+	for ( i = 0; clean[ i ] && j < outSize - 1; i++ ) {
+		c = (byte)clean[ i ];
+		allowed =
+			( c >= '0' && c <= '9' ) ||
+			( c >= 'A' && c <= 'Z' ) ||
+			( c >= 'a' && c <= 'z' ) ||
+			c == '-' || c == '_';
+
+		if ( allowed ) {
+			out[ j++ ] = c;
+			lastUnderscore = qfalse;
+		} else if ( !lastUnderscore && j > 0 ) {
+			out[ j++ ] = '_';
+			lastUnderscore = qtrue;
+		}
+	}
+
+	while ( j > 0 && out[ j - 1 ] == '_' ) {
+		j--;
+	}
+
+	out[ j ] = '\0';
+}
+
+
+static void SV_BuildDemoName( const client_t *client, char *name, int nameSize )
+{
+	const char *gameDir;
+	qtime_t now;
+	char timeString[ 32 ];
+	char mapName[ MAX_QPATH ];
+	char playerName[ MAX_NAME_LENGTH ];
+
+	Com_RealTime( &now );
+	Com_sprintf( timeString, sizeof( timeString ), "%04d%02d%02d-%02d%02d%02d",
+		1900 + now.tm_year,
+		1 + now.tm_mon,
+		now.tm_mday,
+		now.tm_hour,
+		now.tm_min,
+		now.tm_sec );
+
+	SV_SanitizeDemoToken( mapName, sizeof( mapName ),
+		( sv_mapname && sv_mapname->string[ 0 ] ) ? sv_mapname->string : "nomap" );
+	SV_SanitizeDemoToken( playerName, sizeof( playerName ), client->name );
+
+	if ( !playerName[ 0 ] ) {
+		Q_strncpyz( playerName, "player", sizeof( playerName ) );
+	}
+
+	gameDir = FS_GetCurrentGameDir();
+	if ( !gameDir || !gameDir[ 0 ] ) {
+		gameDir = BASEGAME;
+	}
+
+	Com_sprintf( name, nameSize, "%s/demos/server/%s-%s-c%02d-%s",
+		gameDir, timeString, mapName, (int)( client - svs.clients ), playerName );
+}
+
+
+static void SV_WriteDemoFileMessage( client_t *client, const msg_t *msg, int sequence )
+{
+	int len;
+	int swlen;
+	msg_t demoMsg;
+	byte demoBuffer[ MAX_MSGLEN_BUF ];
+
+	if ( client->demoRecordFile == FS_INVALID_HANDLE ) {
+		return;
+	}
+
+	MSG_Copy( &demoMsg, demoBuffer, sizeof( demoBuffer ), msg );
+	MSG_WriteByte( &demoMsg, svc_EOF );
+
+	swlen = LittleLong( sequence );
+	FS_Write( &swlen, 4, client->demoRecordFile );
+
+	len = LittleLong( demoMsg.cursize );
+	FS_Write( &len, 4, client->demoRecordFile );
+	FS_Write( demoMsg.data, demoMsg.cursize, client->demoRecordFile );
+}
+
+
+static qboolean SV_DemoMessageCommand( const msg_t *msg, int *command )
+{
+	msg_t copy = *msg;
+	int cmd;
+
+	MSG_BeginReading( &copy );
+
+	if ( copy.cursize < 5 ) {
+		return qfalse;
+	}
+
+	MSG_ReadLong( &copy );
+
+	while ( copy.readcount < copy.cursize ) {
+		cmd = MSG_ReadByte( &copy );
+
+		if ( cmd == svc_serverCommand ) {
+			MSG_ReadLong( &copy );
+			MSG_ReadString( &copy );
+			continue;
+		}
+
+		*command = cmd;
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+
+static void SV_WriteDemoGamestate( client_t *client )
+{
+	int start;
+	entityState_t nullstate;
+	const svEntity_t *svEnt;
+	msg_t msg;
+	byte msgBuffer[ MAX_MSGLEN_BUF ];
+
+	if ( client->demoRecordFile == FS_INVALID_HANDLE ) {
+		return;
+	}
+
+	MSG_Init( &msg, msgBuffer, MAX_MSGLEN );
+
+	MSG_WriteLong( &msg, client->lastClientCommand );
+	SV_UpdateServerCommandsToClient( client, &msg );
+
+	MSG_WriteByte( &msg, svc_gamestate );
+	MSG_WriteLong( &msg, client->reliableSequence );
+
+	for ( start = 0; start < MAX_CONFIGSTRINGS; start++ ) {
+		if ( *sv.configstrings[ start ] != '\0' ) {
+			MSG_WriteByte( &msg, svc_configstring );
+			MSG_WriteShort( &msg, start );
+			if ( start == CS_SYSTEMINFO && sv.pure != sv_pure->integer ) {
+				char systemInfo[ BIG_INFO_STRING ];
+
+				Q_strncpyz( systemInfo, sv.configstrings[ start ], sizeof( systemInfo ) );
+				Info_SetValueForKey_s( systemInfo, sizeof( systemInfo ), "sv_pure", va( "%i", sv.pure ) );
+				MSG_WriteBigString( &msg, systemInfo );
+			} else {
+				MSG_WriteBigString( &msg, sv.configstrings[ start ] );
+			}
+		}
+	}
+
+	Com_Memset( &nullstate, 0, sizeof( nullstate ) );
+	for ( start = 0; start < MAX_GENTITIES; start++ ) {
+		if ( !sv.baselineUsed[ start ] ) {
+			continue;
+		}
+
+		svEnt = &sv.svEntities[ start ];
+		MSG_WriteByte( &msg, svc_baseline );
+		MSG_WriteDeltaEntity( &msg, &nullstate, &svEnt->baseline, qtrue );
+	}
+
+	MSG_WriteByte( &msg, svc_EOF );
+	MSG_WriteLong( &msg, client - svs.clients );
+	MSG_WriteLong( &msg, sv.checksumFeed );
+
+	if ( msg.overflowed ) {
+		Com_Printf( S_COLOR_YELLOW "WARNING: couldn't write server demo gamestate for %s\n", client->name );
+		SV_StopDemoRecord( client, qtrue );
+		return;
+	}
+
+	SV_WriteDemoFileMessage( client, &msg, client->netchan.outgoingSequence );
+}
+
+
+void SV_StartDemoRecord( client_t *client )
+{
+	char name[ MAX_OSPATH ];
+	char tempName[ MAX_OSPATH ];
+
+	if ( !sv_autoRecordDemos || !sv_autoRecordDemos->integer ) {
+		return;
+	}
+
+	if ( client->netchan.remoteAddress.type == NA_BOT ) {
+		return;
+	}
+
+	if ( client->demoRecordFile != FS_INVALID_HANDLE ) {
+		if ( client->demoRecordServerId == sv.serverId ) {
+			return;
+		}
+
+		SV_StopDemoRecord( client, qfalse );
+	}
+
+	SV_BuildDemoName( client, name, sizeof( name ) );
+	Q_strncpyz( client->demoRecordName, name, sizeof( client->demoRecordName ) );
+
+	Com_sprintf( tempName, sizeof( tempName ), "%s.tmp", client->demoRecordName );
+
+	client->demoRecordFile = FS_SV_FOpenFileWrite( tempName );
+	if ( client->demoRecordFile == FS_INVALID_HANDLE ) {
+		Com_Printf( S_COLOR_YELLOW "WARNING: couldn't open server demo for %s\n", client->name );
+		client->demoRecordName[ 0 ] = '\0';
+		client->demoRecordServerId = 0;
+		client->demoRecordHasSnapshot = qfalse;
+		return;
+	}
+
+	client->demoRecordHasSnapshot = qfalse;
+	client->demoRecordServerId = sv.serverId;
+
+	SV_WriteDemoGamestate( client );
+
+	if ( client->demoRecordFile != FS_INVALID_HANDLE ) {
+		Com_Printf( "Server demo recording to %s\n", client->demoRecordName );
+	}
+}
+
+
+void SV_StopDemoRecord( client_t *client, qboolean discard )
+{
+	char tempName[ MAX_OSPATH ];
+	char finalName[ MAX_OSPATH ];
+	int len;
+	int sequence;
+	int protocol;
+
+	if ( client->demoRecordFile == FS_INVALID_HANDLE ) {
+		client->demoRecordName[ 0 ] = '\0';
+		client->demoRecordServerId = 0;
+		client->demoRecordHasSnapshot = qfalse;
+		return;
+	}
+
+	discard = discard || !client->demoRecordHasSnapshot;
+	Com_sprintf( tempName, sizeof( tempName ), "%s.tmp", client->demoRecordName );
+
+	if ( !discard ) {
+		sequence = 0;
+		protocol = SV_DemoProtocol();
+
+		len = -1;
+		FS_Write( &len, 4, client->demoRecordFile );
+		FS_Write( &len, 4, client->demoRecordFile );
+		FS_FCloseFile( client->demoRecordFile );
+		client->demoRecordFile = FS_INVALID_HANDLE;
+
+		Com_sprintf( finalName, sizeof( finalName ), "%s.%s%d",
+			client->demoRecordName, DEMOEXT, protocol );
+
+		while ( FS_SV_FileExists( finalName ) && ++sequence < 1000 ) {
+			Com_sprintf( finalName, sizeof( finalName ), "%s-%02d.%s%d",
+				client->demoRecordName, sequence, DEMOEXT, protocol );
+		}
+
+		FS_SV_Rename( tempName, finalName );
+		Com_Printf( "Stopped server demo recording: %s\n", finalName );
+	} else {
+		FS_FCloseFile( client->demoRecordFile );
+		client->demoRecordFile = FS_INVALID_HANDLE;
+		FS_Remove( FS_BuildOSPath( FS_GetHomePath(), tempName, NULL ) );
+	}
+
+	client->demoRecordName[ 0 ] = '\0';
+	client->demoRecordServerId = 0;
+	client->demoRecordHasSnapshot = qfalse;
+}
+
+
+void SV_RecordDemoMessage( client_t *client, const msg_t *msg )
+{
+	int command;
+
+	if ( client->demoRecordFile == FS_INVALID_HANDLE || client->demoRecordServerId != sv.serverId ) {
+		return;
+	}
+
+	if ( !SV_DemoMessageCommand( msg, &command ) ) {
+		return;
+	}
+
+	if ( command != svc_snapshot ) {
+		return;
+	}
+
+	SV_WriteDemoFileMessage( client, msg, client->netchan.outgoingSequence );
+	client->demoRecordHasSnapshot = qtrue;
+}
+
+
 /*
 ==================
 SV_DirectConnect
@@ -857,6 +1178,7 @@ Destructor for data allocated in a client structure
 */
 void SV_FreeClient(client_t *client)
 {
+	SV_StopDemoRecord( client, qfalse );
 	SV_Netchan_FreeQueue(client);
 	SV_CloseDownload(client);
 }
@@ -1141,6 +1463,12 @@ static void SV_SendClientGameState( client_t *client ) {
 	}
 
 	// deliver this to the client
+	if ( client->demoRecordServerId != sv.serverId ) {
+		SV_StopDemoRecord( client, qfalse );
+	}
+	if ( sv_autoRecordDemos && sv_autoRecordDemos->integer ) {
+		SV_StartDemoRecord( client );
+	}
 	SV_SendMessageToClient( &msg, client );
 }
 
@@ -1299,6 +1627,8 @@ SV_BeginDownload_f
 static void SV_BeginDownload_f( client_t *cl ) {
 	if ( cl->state == CS_ACTIVE )
 		return;
+
+	SV_StopDemoRecord( cl, qfalse );
 
 	// Kill any existing download
 	SV_CloseDownload( cl );

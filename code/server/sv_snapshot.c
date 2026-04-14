@@ -693,6 +693,8 @@ void SV_SendMessageToClient( msg_t *msg, client_t *client )
 	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageSent = svs.msgTime;
 	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageAcked = 0;
 
+	SV_RecordDemoMessage( client, msg );
+
 	// send the datagram
 	SV_Netchan_Transmit( client, msg );
 }
