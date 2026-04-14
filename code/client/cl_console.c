@@ -2992,7 +2992,7 @@ static void Con_DrawCompletionPopup( float x, float y, float alphaScale, const v
 	backgroundColor[ 0 ] = 0.0f;
 	backgroundColor[ 1 ] = 0.0f;
 	backgroundColor[ 2 ] = 0.0f;
-	backgroundColor[ 3 ] = 0.72f;
+	backgroundColor[ 3 ] = 1.0f;
 	Con_LightenColor( lineColor, 0.25f, borderColor );
 	borderColor[ 3 ] = 0.7f;
 	Con_GetSelectionColor( selectionColor );
