@@ -30,7 +30,7 @@ jobs:
       head_commit_short: ${{ steps.meta.outputs.head_commit_short }}
       previous_nightly_commit: ${{ steps.meta.outputs.previous_nightly_commit }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -71,13 +71,13 @@ jobs:
             rule: install
     steps:
       - name: Checkout current repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Stamp nightly build version
         run: python scripts/nightly.py stamp-version --build-number ${{ needs.prepare.outputs.build_number }}
 
       - name: Checkout msys32 tools from sibling repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ec-/msys32
           path: msys
@@ -102,7 +102,7 @@ jobs:
           copy build\release-mingw32-${{ matrix.arch }}\fnquake3*.dll bin\ || exit /b
           if exist build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll copy build\release-mingw32-${{ matrix.arch }}\OpenAL32.dll bin\ || exit /b
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-mingw-${{ matrix.arch }}
           path: bin
@@ -139,9 +139,9 @@ jobs:
             rend_arch: x86_64
             openal_dir: x64
     steps:
-      - uses: microsoft/setup-msbuild@v2
+      - uses: microsoft/setup-msbuild@v3
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -170,7 +170,7 @@ jobs:
           if exist code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll copy code\openal\windows\${{ matrix.openal_dir }}\OpenAL32.dll bin\ || exit /b
           msbuild code\win32\msvc2017\fnquake3.vcxproj -p:TargetName=fnquake3,Configuration=Release,Platform=${{ matrix.platform }},UseWasapi=USE_WASAPI=0 -t:Clean || exit /b
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-msvc-${{ matrix.pkg_suffix }}
           path: bin
@@ -206,7 +206,7 @@ jobs:
             sudo apt-get -y install g++ libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev libopenal-dev
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -217,7 +217,7 @@ jobs:
         run: |
           make ${{ matrix.rule }} -j$(nproc) ARCH=${{ matrix.arch }} COMPILE_ARCH=${{ matrix.arch }} CC=gcc DESTDIR=bin ${{ matrix.use_sdl }} USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: bin
@@ -236,7 +236,7 @@ jobs:
           sudo apt-get install -y make gcc g++
           sudo apt-get -y install libcurl4-openssl-dev mesa-common-dev libxxf86dga-dev libxrandr-dev libxxf86vm-dev libasound2-dev libopenal-dev
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -247,7 +247,7 @@ jobs:
         run: |
           make install -j$(nproc) ARCH=aarch64 COMPILE_ARCH=aarch64 CC=gcc DESTDIR=bin USE_SDL=0 USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-arm64
           path: bin
@@ -267,7 +267,7 @@ jobs:
       - name: Install tools
         run: brew install coreutils make sdl3
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -278,7 +278,7 @@ jobs:
         run: |
           gmake install -j$(sysctl -n hw.logicalcpu) ARCH=${{ matrix.arch }} CC=clang DESTDIR=bin INSTALL=ginstall USE_RENDERER_DLOPEN=1 USE_OPENGL=1 USE_VULKAN=1 STRIP=echo
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-${{ matrix.arch }}
           path: bin
@@ -290,7 +290,7 @@ jobs:
     needs: [prepare, windows-msys32, windows-msvc, ubuntu-x86, ubuntu-arm64, macos-x86]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -302,7 +302,7 @@ jobs:
         run: python scripts/nightly.py stamp-version --build-number "${{ needs.prepare.outputs.build_number }}"
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
