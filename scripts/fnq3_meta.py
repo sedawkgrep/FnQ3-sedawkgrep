@@ -86,6 +86,7 @@ def normalize_commit(value: str | None = None) -> str:
 def channel_metadata(
     channel: str,
     *,
+    build_number: int | None = None,
     build_date: str | None = None,
     commit: str | None = None,
     ref_name: str | None = None,
@@ -97,16 +98,26 @@ def channel_metadata(
     if channel not in {"release", "nightly"}:
         raise ValueError(f"Unsupported channel: {channel}")
 
+    version_value = str(meta["version"])
     if channel == "release":
-        release_tag = ref_name or f"{meta['tag_prefix']}{meta['version']}"
-        archive_prefix = f"{meta['artifact_prefix']}-{meta['version']}"
-        version_label = str(meta["version"])
-        release_title = f"{meta['project_name']} {meta['version']}"
+        release_tag = ref_name or f"{meta['tag_prefix']}{version_value}"
+        archive_prefix = f"{meta['artifact_prefix']}-{version_value}"
+        version_label = version_value
+        release_title = f"{meta['project_name']} {version_value}"
     else:
-        release_tag = f"{meta['nightly_tag']}-{meta['version']}-{date_slug}-{short_commit}"
-        archive_prefix = f"{meta['artifact_prefix']}-nightly-{meta['version']}-{date_slug}-{short_commit}"
-        version_label = f"{meta['version']}-nightly.{date_slug}+{short_commit}"
-        release_title = f"{meta['project_name']} Nightly {iso_date} ({meta['version']})"
+        tweak = int(meta["version_tweak"])
+        if build_number is not None:
+            tweak = int(build_number)
+        version_value = compose_version_string(
+            int(meta["version_major"]),
+            int(meta["version_minor"]),
+            int(meta["version_patch"]),
+            tweak,
+        )
+        release_tag = f"{meta['nightly_tag']}-{version_value}-{date_slug}-{short_commit}"
+        archive_prefix = f"{meta['artifact_prefix']}-nightly-{version_value}-{date_slug}-{short_commit}"
+        version_label = f"{version_value}-nightly.{date_slug}+{short_commit}"
+        release_title = f"{meta['project_name']} Nightly {iso_date} ({version_value})"
 
     meta.update(
         {
@@ -116,9 +127,10 @@ def channel_metadata(
             "commit": short_commit,
             "release_tag": release_tag,
             "archive_prefix": archive_prefix,
+            "version": version_value,
             "version_label": version_label,
             "release_title": release_title,
-            "release_tag_example": f"{meta['tag_prefix']}{meta['version']}",
+            "release_tag_example": f"{meta['tag_prefix']}{version_value}",
         }
     )
     return meta

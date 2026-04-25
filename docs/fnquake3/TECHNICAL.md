@@ -47,6 +47,15 @@ Current policy:
 - Tagged releases use semantic version tags in the form `vX.Y.Z`.
 - Nightly builds produce a unique tag per build (e.g. `nightly-0.1.0.42-20240403-abc12345`), combining the build version, date, and commit for a persistent per-build release.
 - The base version in `fnq3_version.h` should always represent the next intended stable release line.
+- Release-facing change history lives in [`docs/fnquake3/CHANGELOG.md`](./CHANGELOG.md). Keep the `Unreleased` section current as work lands.
+- Use [`scripts/changelog.py`](../../scripts/changelog.py) to extract a section or promote `Unreleased` into a dated release section during tagging.
+
+Typical changelog helper usage:
+
+```powershell
+python scripts/changelog.py section --version Unreleased
+python scripts/changelog.py prepare-release --version 0.1.0 --date 2026-04-25
+```
 
 ## Docs Flow
 

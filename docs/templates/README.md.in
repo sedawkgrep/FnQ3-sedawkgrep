@@ -62,6 +62,7 @@ Fappin' and Fraggin'
 - [Audio Guide](docs/AUDIO.md) for backend selection, volume, music, spatial audio, and sound debugging tools.
 - [Console Guide](docs/CONSOLE.md) for console scaling, interaction, completion, and appearance.
 - [Screenshot Guide](docs/SCREENSHOTS.md) for capture commands, naming patterns, view metadata sidecars, watermarks, and cube-map export.
+- [Changelog](docs/fnquake3/CHANGELOG.md) for release-facing change history.
 - [Technical Notes](docs/fnquake3/TECHNICAL.md) for maintainers, release flow, and repo conventions.
 - [Agent Guide](AGENTS.md) for automation rules and local repository references.
 

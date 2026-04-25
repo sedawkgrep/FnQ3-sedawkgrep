@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
         default="summary",
     )
     parser.add_argument("--channel", choices=("release", "nightly"), default="release")
+    parser.add_argument("--build-number", type=int)
     parser.add_argument("--build-date", default=os.environ.get("FNQ3_BUILD_DATE"))
     parser.add_argument("--commit", default=os.environ.get("GITHUB_SHA"))
     parser.add_argument("--ref-name", default=os.environ.get("GITHUB_REF_NAME"))
@@ -28,8 +29,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.build_number is None:
+        env_build_number = os.environ.get("FNQ3_BUILD_NUMBER")
+        if env_build_number:
+            args.build_number = int(env_build_number)
     meta = channel_metadata(
         args.channel,
+        build_number=args.build_number,
         build_date=args.build_date,
         commit=args.commit,
         ref_name=args.ref_name,
@@ -48,6 +54,7 @@ def main() -> int:
             "FNQ3_RELEASE_TAG": meta["release_tag"],
             "FNQ3_RELEASE_TITLE": meta["release_title"],
             "FNQ3_ARCHIVE_PREFIX": meta["archive_prefix"],
+            "FNQ3_BUILD_NUMBER": args.build_number if args.build_number is not None else "",
             "FNQ3_BUILD_DATE": meta["build_date"],
             "FNQ3_BUILD_DATE_SLUG": meta["build_date_slug"],
             "FNQ3_COMMIT": meta["commit"],

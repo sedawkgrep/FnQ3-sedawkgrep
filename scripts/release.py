@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=ROOT / ".install")
     parser.add_argument("--temp-dir", type=Path, default=ROOT / ".tmp" / "release")
     parser.add_argument("--build-date")
+    parser.add_argument("--build-number", type=int)
     parser.add_argument("--commit")
     parser.add_argument("--ref-name")
     return parser.parse_args()
@@ -62,6 +63,7 @@ def build_archives(args: argparse.Namespace) -> dict[str, object]:
 
     meta = channel_metadata(
         args.channel,
+        build_number=args.build_number,
         build_date=args.build_date,
         commit=args.commit,
         ref_name=args.ref_name,
