@@ -361,6 +361,18 @@ static void SV_MapRestart_f( void ) {
 	VM_Call( gvm, 1, GAME_RUN_FRAME, sv.time );
 	svs.time += 100;
 
+	// cycle per-match demo recordings: finalize the old demo and start a new one
+	if ( sv_autoRecordDemos && sv_autoRecordDemos->integer >= 3 ) {
+		for ( i = 0; i < sv.maxclients; i++ ) {
+			client = &svs.clients[i];
+			if ( client->state < CS_CONNECTED ) {
+				continue;
+			}
+			SV_StopDemoRecord( client, qfalse );
+			SV_StartDemoRecord( client );
+		}
+	}
+
 	for ( i = 0; i < sv.maxclients; i++ ) {
 		client = &svs.clients[i];
 		if ( client->state >= CS_PRIMED ) {

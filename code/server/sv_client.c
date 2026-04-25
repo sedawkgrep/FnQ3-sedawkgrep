@@ -683,6 +683,10 @@ void SV_StartDemoRecord( client_t *client )
 		return;
 	}
 
+	if ( ( sv_autoRecordDemos->integer == 2 || sv_autoRecordDemos->integer == 4 ) && sv_cheats->integer ) {
+		return;
+	}
+
 	if ( client->netchan.remoteAddress.type == NA_BOT ) {
 		return;
 	}
@@ -1467,7 +1471,9 @@ static void SV_SendClientGameState( client_t *client ) {
 		SV_StopDemoRecord( client, qfalse );
 	}
 	if ( sv_autoRecordDemos && sv_autoRecordDemos->integer ) {
-		SV_StartDemoRecord( client );
+		if ( ( sv_autoRecordDemos->integer != 2 && sv_autoRecordDemos->integer != 4 ) || !sv_cheats->integer ) {
+			SV_StartDemoRecord( client );
+		}
 	}
 	SV_SendMessageToClient( &msg, client );
 }

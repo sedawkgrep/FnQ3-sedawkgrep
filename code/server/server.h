@@ -314,6 +314,7 @@ extern	cvar_t	*sv_pure;
 extern	cvar_t	*sv_floodProtect;
 extern	cvar_t	*sv_lanForceRate;
 extern	cvar_t	*sv_autoRecordDemos;
+extern	cvar_t	*sv_cheats;
 
 extern	cvar_t *sv_levelTimeReset;
 extern	cvar_t *sv_filter;

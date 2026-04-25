@@ -743,7 +743,7 @@ void SV_Init( void )
 	Cvar_SetDescription( sv_floodProtect, "Toggle server flood protection to keep players from bringing the server down." );
 
 	// systeminfo
-	Cvar_Get( "sv_cheats", "1", CVAR_SYSTEMINFO | CVAR_ROM );
+	sv_cheats = Cvar_Get( "sv_cheats", "1", CVAR_SYSTEMINFO | CVAR_ROM );
 	sv_serverid = Cvar_Get( "sv_serverid", "0", CVAR_SYSTEMINFO | CVAR_ROM );
 	sv_pure = Cvar_Get( "sv_pure", "1", CVAR_SYSTEMINFO | CVAR_LATCH );
 	Cvar_SetDescription( sv_pure, "Requires clients to only get data from pack archives the server is using." );
@@ -794,7 +794,7 @@ void SV_Init( void )
 	sv_lanForceRate = Cvar_Get( "sv_lanForceRate", "1", CVAR_ARCHIVE_ND );
 	Cvar_SetDescription( sv_lanForceRate, "Forces LAN clients to the maximum rate instead of accepting client setting." );
 	sv_autoRecordDemos = Cvar_Get( "sv_autoRecordDemos", "0", CVAR_ARCHIVE_ND );
-	Cvar_SetDescription( sv_autoRecordDemos, "Automatically records a server-side demo for each human client after a gamestate is sent." );
+	Cvar_SetDescription( sv_autoRecordDemos, "Automatically records a server-side demo for each human client.\n 1 = record per map, 2 = record per map but skip devmap, 3 = record per match, 4 = record per match but skip devmap." );
 
 #ifdef USE_BANS
 	sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
