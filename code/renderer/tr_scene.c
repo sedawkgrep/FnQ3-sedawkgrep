@@ -458,6 +458,19 @@ static void R_RenderScreenshotCubemapViews( void )
 		R_RenderView( &cubeParms );
 		R_AddScreenshotCmd( captureX, captureY, captureSize, captureSize, backEnd.screenshotCubeFormat,
 			backEnd.screenshotCubeNames[i], backEnd.screenshotCubeSilent, qfalse );
+
+		/*
+		=============
+		R_RenderScreenshotCubemapViews draw surf carry-over
+
+		Keep per-view draw surface counts monotonic so queued draw commands for
+		each cubemap face reference stable, non-overlapping ranges.
+		=============
+		*/
+		cubeRefdef.numDrawSurfs = tr.refdef.numDrawSurfs;
+#ifdef USE_PMLIGHT
+		cubeRefdef.numLitSurfs = tr.refdef.numLitSurfs;
+#endif
 	}
 
 	tr.refdef = cubeRefdef;
