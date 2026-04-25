@@ -308,11 +308,11 @@ jobs:
 
       - name: Resolve nightly version metadata
         run: |
-          python scripts/version.py github-env --channel nightly --build-date "${{ needs.prepare.outputs.build_date }}" --commit "${{ needs.prepare.outputs.head_commit }}" >> "$GITHUB_ENV"
+          python scripts/version.py github-env --channel nightly --build-number "${{ needs.prepare.outputs.build_number }}" --build-date "${{ needs.prepare.outputs.build_date }}" --commit "${{ needs.prepare.outputs.head_commit }}" >> "$GITHUB_ENV"
 
       - name: Package nightly archives
         run: |
-          python scripts/release.py --channel nightly --artifact-root artifacts --build-date "${{ needs.prepare.outputs.build_date }}" --commit "${{ needs.prepare.outputs.head_commit }}"
+          python scripts/release.py --channel nightly --artifact-root artifacts --build-number "${{ needs.prepare.outputs.build_number }}" --build-date "${{ needs.prepare.outputs.build_date }}" --commit "${{ needs.prepare.outputs.head_commit }}"
 
       - name: Build nightly release notes
         run: |

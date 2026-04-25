@@ -16,6 +16,7 @@ from fnq3_meta import (
     normalize_commit,
     normalize_date,
 )
+from changelog import DEFAULT_CHANGELOG, section_text
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     notes.add_argument("--build-date")
     notes.add_argument("--from-commit")
     notes.add_argument("--to-commit")
+    notes.add_argument("--changelog", type=Path, default=DEFAULT_CHANGELOG)
     notes.add_argument("--output", type=Path)
 
     return parser.parse_args()
@@ -69,6 +71,12 @@ def resolve_tag_commit(tag_name: str) -> str:
     return result.stdout.strip()
 
 
+def latest_tag(pattern: str) -> str:
+    output = git("tag", "--list", pattern, "--sort=-creatordate", check=False)
+    tags = [line.strip() for line in output.splitlines() if line.strip()]
+    return tags[0] if tags else ""
+
+
 def latest_stable_tag(tag_prefix: str) -> str:
     pattern = f"{tag_prefix}[0-9]*"
     output = git("tag", "--list", pattern, "--sort=-version:refname", check=False)
@@ -91,7 +99,9 @@ def nightly_context(
     meta = base_metadata()
     head_sha = (head_commit or git("rev-parse", "HEAD")).strip()
     iso_date, _ = normalize_date(build_date)
-    previous_nightly_commit = resolve_tag_commit(str(meta["nightly_tag"]))
+    nightly_tag_prefix = str(meta["nightly_tag"])
+    latest_nightly = latest_tag(f"{nightly_tag_prefix}-*")
+    previous_nightly_commit = resolve_tag_commit(latest_nightly) if latest_nightly else ""
     stable_tag = latest_stable_tag(str(meta["tag_prefix"]))
     build_number = commit_count_since(stable_tag, head_sha)
     version_string = compose_version_string(
@@ -110,6 +120,7 @@ def nightly_context(
         "head_commit": head_sha,
         "head_commit_short": normalize_commit(head_sha),
         "nightly_tag": str(meta["nightly_tag"]),
+        "latest_nightly_tag": latest_nightly,
         "stable_tag": stable_tag,
         "previous_nightly_commit": previous_nightly_commit,
         "should_build": force or not previous_nightly_commit or previous_nightly_commit != head_sha,
@@ -190,6 +201,7 @@ def render_release_notes(
     build_date: str | None = None,
     from_commit: str | None = None,
     to_commit: str | None = None,
+    changelog: Path = DEFAULT_CHANGELOG,
 ) -> str:
     meta = base_metadata()
     target_commit = (to_commit or git("rev-parse", "HEAD")).strip()
@@ -227,6 +239,12 @@ def render_release_notes(
     else:
         lines.append(f"- {normalize_commit(target_commit)} no new commits were found for the requested range")
 
+    lines.extend(["", "## Changelog highlights", ""])
+    try:
+        lines.append(section_text(changelog, "Unreleased").strip())
+    except Exception as exc:
+        lines.append(f"- Unable to read changelog highlights: {exc}")
+
     return "\n".join(lines) + "\n"
 
 
@@ -252,6 +270,7 @@ def main() -> int:
         build_date=args.build_date,
         from_commit=args.from_commit,
         to_commit=args.to_commit,
+        changelog=args.changelog,
     )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
